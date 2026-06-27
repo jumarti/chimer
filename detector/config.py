@@ -34,11 +34,25 @@ FFMPEG_TIMEOUT_S: int = 12
 # ZONE_OPEN    where the gate-bar markers travel when the gate swings open.
 #   Determined from open-state sample analysis (0097-0100).
 #
+# ZONE_LATCH   *tight* zone around the exact pixel footprint of the retroreflective
+#   marker overlap when the gate is fully latched.  Must be small enough that
+#   bright concrete/ground is NOT included — typically 80-150 px wide/tall.
+#   When set (non-None), the classifier becomes ZONE_LATCH-primary:
+#     marker present in ZONE_LATCH  →  CLOSED  (markers aligned)
+#     marker absent  from ZONE_LATCH →  OPEN   (any movement, even a few cm)
+#   When None, falls back to ZONE_OPEN-primary logic (current safe default).
+#
+#   Calibrate by running:  uv run python calibrate.py --show
+#   In the annotated closed-gate frame, find the bounding box of ONLY the
+#   retroreflective blobs (green rectangles) inside ZONE_CLOSED and use
+#   those coordinates here (add ~20 px margin on each side).
+#
 # SEARCH_MARGIN  adds shake tolerance: each zone is expanded by this many
 #   pixels in every direction before the blob search runs.
 # ---------------------------------------------------------------------------
 ZONE_CLOSED: tuple[int, int, int, int] = (387, 455, 207, 261)  # (x, y, w, h)
 ZONE_OPEN:   tuple[int, int, int, int] = (160,  85, 590, 140)  # (x, y, w, h)
+ZONE_LATCH:  tuple[int, int, int, int] | None = None  # set after calibration
 SEARCH_MARGIN: int = 30  # px — camera-shake tolerance
 
 # Anchor: a fixed reference marker used to measure camera drift and shift

@@ -121,34 +121,58 @@ class GateClassifier:
 
         closed_score = closed_res.confidence
         open_score   = open_res.confidence
-        quality      = max(closed_score, open_score)
 
         closed_hit = closed_res.has_marker
         open_hit   = open_res.has_marker
 
         # ---------------------------------------------------------------
-        # Classification logic
+        # Classification logic — two modes depending on ZONE_LATCH.
         # ---------------------------------------------------------------
-        # ZONE_OPEN is the PRIMARY discriminator: in daylight the ZONE_CLOSED
-        # area can have high background brightness (sunlit ground/concrete)
-        # making closed_hit unreliable as a standalone signal.  ZONE_OPEN
-        # (upper sky/vegetation band) is almost always dark when closed, so
-        # a marker there is a clean OPEN signal.
-        #
-        #   open_hit  → OPEN  (regardless of closed_hit noise)
-        #   ¬open_hit + closed_hit → CLOSED
-        #   ¬open_hit + ¬closed_hit → UNCERTAIN (fog/darkness/obstruction)
-        # ---------------------------------------------------------------
-        if open_hit:
-            state = "open"
-            # Light penalty if closed zone also has anomalous brightness.
-            confidence = open_score * (1.0 - closed_score * 0.15)
-        elif closed_hit:
-            state = "closed"
-            confidence = closed_score
+        if config.ZONE_LATCH is not None:
+            # --- LATCH-PRIMARY mode (fine-grained, requires calibration) ---
+            # ZONE_LATCH is a tight zone that covers ONLY the retroreflective
+            # marker overlap footprint.  Any movement (even a few cm) takes
+            # the markers outside it, so absence == open.
+            #
+            #   latch_hit              → CLOSED  (markers perfectly aligned)
+            #   ¬latch_hit + open_hit  → OPEN    (fully open, high confidence)
+            #   ¬latch_hit + ¬open_hit → OPEN    (slightly open / between zones)
+            latch_res = find_blobs_in_zone(
+                frame, _shift(config.ZONE_LATCH), margin=config.SEARCH_MARGIN // 2,
+                bright_threshold=threshold,
+            )
+            latch_hit = latch_res.has_marker
+            if latch_hit:
+                state      = "closed"
+                confidence = latch_res.confidence
+            elif open_hit:
+                state      = "open"
+                confidence = open_score
+            else:
+                # Markers are between zones — gate is slightly ajar.
+                state      = "open"
+                confidence = 0.45  # inferred from absence; counts in window (> MIN_FRAME_QUALITY)
+            quality = max(latch_res.confidence, open_score) if latch_hit or open_hit else 0.5
         else:
-            state = "uncertain"
-            confidence = 0.0
+            # --- ZONE_OPEN-PRIMARY mode (default, works without calibration) ---
+            # ZONE_OPEN (sky/vegetation) is almost always dark when closed, so
+            # a marker there is a clean OPEN signal.  ZONE_CLOSED is used only
+            # as a secondary confirmation because sunlit concrete can mimic
+            # marker brightness in the larger ZONE_CLOSED area.
+            #
+            #   open_hit              → OPEN
+            #   ¬open_hit + closed_hit → CLOSED
+            #   neither               → UNCERTAIN
+            if open_hit:
+                state      = "open"
+                confidence = open_score * (1.0 - closed_score * 0.15)
+            elif closed_hit:
+                state      = "closed"
+                confidence = closed_score
+            else:
+                state      = "uncertain"
+                confidence = 0.0
+            quality = max(closed_score, open_score)
 
         logger.info(
             "classify: %-9s conf=%.2f  closed=%s(%.2f)  open=%s(%.2f)"
