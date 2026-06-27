@@ -137,11 +137,14 @@ class GateClassifier:
             #   latch_hit              → CLOSED  (markers perfectly aligned)
             #   ¬latch_hit + open_hit  → OPEN    (fully open, high confidence)
             #   ¬latch_hit + ¬open_hit → OPEN    (slightly open / between zones)
+            latch_threshold = config.BRIGHT_THRESHOLD_IR_LATCH if ir else threshold
             latch_res = find_blobs_in_zone(
-                frame, _shift(config.ZONE_LATCH), margin=config.SEARCH_MARGIN // 2,
-                bright_threshold=threshold,
+                frame, _shift(config.ZONE_LATCH), margin=0,
+                bright_threshold=latch_threshold,
             )
-            latch_hit = latch_res.has_marker
+            # Require a substantial blob to reject concrete scatter (50-110 px);
+            # real marker blobs are 450-1200 px.
+            latch_hit = any(b.area >= config.LATCH_MIN_BLOB_AREA for b in latch_res.blobs)
             if latch_hit:
                 state      = "closed"
                 confidence = latch_res.confidence

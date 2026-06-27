@@ -52,8 +52,16 @@ FFMPEG_TIMEOUT_S: int = 12
 # ---------------------------------------------------------------------------
 ZONE_CLOSED: tuple[int, int, int, int] = (387, 455, 207, 261)  # (x, y, w, h)
 ZONE_OPEN:   tuple[int, int, int, int] = (160,  85, 590, 140)  # (x, y, w, h)
-ZONE_LATCH:  tuple[int, int, int, int] | None = None  # set after calibration
+ZONE_LATCH:  tuple[int, int, int, int] | None = (448, 499, 70, 73)  # upper marker overlap; x:448-518 y:499-572
 SEARCH_MARGIN: int = 30  # px — camera-shake tolerance
+
+# Latch-zone detection overrides (tighter than the general blob detector).
+# LATCH_MIN_BLOB_AREA  rejects small concrete scatter (~50-110 px) while
+#   accepting real marker blobs (~450-1200 px).  Derived from sample analysis.
+# BRIGHT_THRESHOLD_IR_LATCH  retroreflective marker appears dimmer in the small
+#   latch zone; lower threshold picks up the blob that BRIGHT_THRESHOLD_IR misses.
+LATCH_MIN_BLOB_AREA:       int = 200  # px; concrete scatter is 50-110px, markers 450-1200px
+BRIGHT_THRESHOLD_IR_LATCH: int = 180  # IR latch threshold (< BRIGHT_THRESHOLD_IR=200)
 
 # Anchor: a fixed reference marker used to measure camera drift and shift
 # both zones to compensate.  Set to None to disable (simpler, less robust).
