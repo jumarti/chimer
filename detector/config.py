@@ -18,8 +18,8 @@ load_dotenv(Path(__file__).parent / ".env")
 # ---------------------------------------------------------------------------
 RTSP_URL: str = os.environ.get("RTSP_URL", "rtsp://CHANGE_ME/stream")
 
-# Seconds between image polls.  7 s × 7-frame window ≈ 49 s of context.
-POLL_INTERVAL_S: float = 7.0
+# Seconds between image polls.  4 s × 5-frame window ≈ 20 s of context.
+POLL_INTERVAL_S: float = 4.0
 
 # Capture backend.  Both are tried; primary goes first, fallback on failure.
 # "opencv" uses cv2.VideoCapture; "ffmpeg" spawns a subprocess.
@@ -74,11 +74,12 @@ ZONE_BRIGHT_MIN_PX: int = 50
 # Temporal aggregator
 # ---------------------------------------------------------------------------
 # Sliding window length (number of qualifying frames kept).
-WINDOW_SIZE: int = 7
+WINDOW_SIZE: int = 5
 
 # Qualifying frames that must agree before the reported state flips.
-# 6-of-7 = 85 % majority — heavily biased against false detections.
-FLIP_THRESHOLD: int = 6
+# 4-of-5 = 80 % majority — conservative but ~2.5× faster than the old 6-of-7.
+# Worst-case detection latency: FLIP_THRESHOLD × POLL_INTERVAL_S = 4 × 4 = 16 s.
+FLIP_THRESHOLD: int = 4
 
 # Frames whose quality is below this threshold are silently discarded.
 MIN_FRAME_QUALITY: float = 0.25

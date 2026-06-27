@@ -119,7 +119,15 @@ def run_calibration(
 
         if show:
             ann = clf.annotate(frame, fr)
-            cv2.imshow(f"{img_path.name} — expected:{expected} got:{fr.state}", ann)
+            # Scale down to fit on screen (target width 1280)
+            h, w = ann.shape[:2]
+            scale = min(1.0, 1280 / w, 900 / h)
+            if scale < 1.0:
+                ann = cv2.resize(ann, (int(w * scale), int(h * scale)),
+                                 interpolation=cv2.INTER_AREA)
+            title = f"{img_path.name} — expected:{expected} got:{fr.state}  (any key=next, ESC=quit)"
+            cv2.namedWindow(title, cv2.WINDOW_NORMAL)
+            cv2.imshow(title, ann)
             key = cv2.waitKey(0) & 0xFF
             cv2.destroyAllWindows()
             if key == 27:  # ESC
