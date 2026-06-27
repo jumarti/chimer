@@ -1,0 +1,11 @@
+{
+  "mpv-shot0070.jpg": {"state": "closed", "notes": "daytime, gate clearly latched"},
+  "mpv-shot0072.jpg": {"state": "closed", "notes": "IR/night mode"},
+  "mpv-shot0078.jpg": {"state": "closed", "notes": "dusk lighting"},
+  "mpv-shot0085.jpg": {"state": "closed", "notes": "overcast day"},
+  "mpv-shot0090.jpg": {"state": "closed", "notes": "daytime"},
+  "mpv-shot0097.jpg": {"state": "open",   "notes": "gate fully open, 16:04"},
+  "mpv-shot0098.jpg": {"state": "open",   "notes": "gate fully open, 16:04"},
+  "mpv-shot0099.jpg": {"state": "open",   "notes": "gate fully open, 16:04"},
+  "mpv-shot0100.jpg": {"state": "open",   "notes": "gate fully open, 16:04"}
+}

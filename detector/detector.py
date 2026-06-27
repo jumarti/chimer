@@ -1,111 +1,262 @@
 """
-detector/detector.py — CV gate-open/closed detection.
+detector/detector.py — two-zone gate classifier + temporal aggregator.
 
-Strategy: frame differencing against a rolling baseline.
-- Extract the configured ROI from each new frame.
-- Compare pixel-by-pixel with the baseline.
-- If the fraction of changed pixels exceeds CHANGE_THRESHOLD the gate is
-  considered OPEN; otherwise CLOSED.
-- A simple debounce counter prevents single-frame noise from flipping state.
+Approach
+--------
+Retroreflective markers are the brightest objects in every lighting
+condition (day colour, dusk, IR night).  Rather than frame-differencing,
+we look at WHERE markers currently are:
 
-TODO: tune ROI, CHANGE_THRESHOLD, and PIXEL_DIFF_THRESHOLD in config.py
-      once the camera is aimed at the gate.
+  CLOSED  marker(s) present in ZONE_CLOSED  AND  NOT in ZONE_OPEN
+  OPEN    marker(s) present in ZONE_OPEN    AND  NOT in ZONE_CLOSED
+  UNCERTAIN  any other combination (both lit, neither lit, anchor lost)
+
+Temporal aggregation
+--------------------
+A sliding window of WINDOW_SIZE qualifying frames is maintained.
+Uncertain or low-quality frames are discarded, not counted.
+The reported state only flips when FLIP_THRESHOLD frames in the window
+agree — heavily biased against false detections.
 """
+from __future__ import annotations
 
+import collections
 import logging
 import time
 from dataclasses import dataclass, field
-from typing import Optional
 
-import cv2
 import numpy as np
 
 import config
+from marker import (
+    ZoneResult,
+    annotate_frame,
+    find_anchor_offset,
+    find_blobs_in_zone,
+    is_ir_mode,
+)
 
 logger = logging.getLogger(__name__)
 
 
+# ---------------------------------------------------------------------------
+# Data types
+# ---------------------------------------------------------------------------
+
 @dataclass
-class DetectionResult:
-    state: str          # "open" | "closed" | "unknown"
-    change_ratio: float # fraction of ROI pixels that changed (0.0–1.0)
+class FrameResult:
+    """Full per-frame detection output."""
+    state: str            # "open" | "closed" | "uncertain"
+    confidence: float     # 0–1
+    closed_score: float   # zone confidence for CLOSED zone
+    open_score:   float   # zone confidence for OPEN zone
+    anchor_offset: tuple[int, int] | None  # (dx, dy); None = anchor lost
+    quality: float        # max(closed_score, open_score) — frame usefulness
+    is_ir: bool
     timestamp: float = field(default_factory=time.time)
+    # Kept for annotation; excluded from JSON serialisation.
+    closed_result: ZoneResult | None = field(default=None, repr=False)
+    open_result:   ZoneResult | None = field(default=None, repr=False)
+
+    def to_dict(self) -> dict:
+        """Serialisable summary (no numpy objects)."""
+        return {
+            "state": self.state,
+            "confidence": round(self.confidence, 4),
+            "closed_score": round(self.closed_score, 4),
+            "open_score": round(self.open_score, 4),
+            "anchor_offset": list(self.anchor_offset) if self.anchor_offset else None,
+            "quality": round(self.quality, 4),
+            "is_ir": self.is_ir,
+            "timestamp": self.timestamp,
+        }
 
 
-class GateDetector:
-    """Stateful gate detector with debounce."""
+# ---------------------------------------------------------------------------
+# Per-frame classifier
+# ---------------------------------------------------------------------------
 
-    def __init__(self) -> None:
-        self._baseline: Optional[np.ndarray] = None
-        self._last_state: str = "unknown"
-        # Debounce counters
-        self._open_streak: int = 0
-        self._close_streak: int = 0
+class GateClassifier:
+    """Classifies a single frame into open / closed / uncertain."""
 
-    def update(self, frame: np.ndarray) -> DetectionResult:
-        """
-        Feed a new frame and return the current gate state.
+    def classify(self, frame: np.ndarray) -> FrameResult:
+        ir = is_ir_mode(frame)
 
-        The first call establishes the baseline; subsequent calls compare
-        against it.  Call `reset_baseline()` if lighting conditions change
-        significantly.
-        """
-        roi = self._extract_roi(frame)
+        # --- Camera drift correction via anchor marker ---
+        offset = find_anchor_offset(frame)
+        if offset is None:
+            logger.warning("Anchor lost — returning UNCERTAIN")
+            return FrameResult(
+                state="uncertain", confidence=0.0,
+                closed_score=0.0, open_score=0.0,
+                anchor_offset=None, quality=0.0, is_ir=ir,
+            )
 
-        if self._baseline is None:
-            self._baseline = roi.copy()
-            logger.info("Baseline frame captured (%dx%d)", roi.shape[1], roi.shape[0])
-            return DetectionResult(state="unknown", change_ratio=0.0)
+        dx, dy = offset
+        drift = (dx ** 2 + dy ** 2) ** 0.5
+        if drift > config.ANCHOR_MAX_DRIFT:
+            logger.warning("Camera drift %.1f px exceeds limit — UNCERTAIN", drift)
+            return FrameResult(
+                state="uncertain", confidence=0.0,
+                closed_score=0.0, open_score=0.0,
+                anchor_offset=offset, quality=0.0, is_ir=ir,
+            )
 
-        change_ratio = self._compute_change(roi)
-        raw_open = change_ratio >= config.CHANGE_THRESHOLD
+        # IR-aware detection threshold.
+        threshold = config.BRIGHT_THRESHOLD_IR if ir else config.BRIGHT_THRESHOLD
 
-        # Debounce ---------------------------------------------------
-        if raw_open:
-            self._open_streak += 1
-            self._close_streak = 0
-        else:
-            self._close_streak += 1
-            self._open_streak = 0
+        # Shift both zones by the measured drift.
+        def _shift(zone: tuple[int, int, int, int]) -> tuple[int, int, int, int]:
+            x, y, w, h = zone
+            return (max(0, x + dx), max(0, y + dy), w, h)
 
-        if self._open_streak >= config.OPEN_DEBOUNCE:
-            self._last_state = "open"
-        elif self._close_streak >= config.CLOSE_DEBOUNCE:
-            self._last_state = "closed"
-        # else: keep previous state (still building streak)
-
-        logger.debug(
-            "change=%.3f threshold=%.3f raw=%s state=%s (open_streak=%d close_streak=%d)",
-            change_ratio, config.CHANGE_THRESHOLD, raw_open,
-            self._last_state, self._open_streak, self._close_streak,
+        closed_res = find_blobs_in_zone(
+            frame, _shift(config.ZONE_CLOSED), margin=config.SEARCH_MARGIN,
+            bright_threshold=threshold,
+        )
+        open_res = find_blobs_in_zone(
+            frame, _shift(config.ZONE_OPEN), margin=config.SEARCH_MARGIN,
+            bright_threshold=threshold,
         )
 
-        return DetectionResult(state=self._last_state, change_ratio=change_ratio)
+        closed_score = closed_res.confidence
+        open_score   = open_res.confidence
+        quality      = max(closed_score, open_score)
 
-    def reset_baseline(self) -> None:
-        """Force re-capture of the baseline on the next frame."""
-        self._baseline = None
-        self._open_streak = 0
-        self._close_streak = 0
-        logger.info("Baseline reset")
+        closed_hit = closed_res.has_marker
+        open_hit   = open_res.has_marker
 
-    # ------------------------------------------------------------------
-    # Internal helpers
-    # ------------------------------------------------------------------
+        # ---------------------------------------------------------------
+        # Classification logic
+        # ---------------------------------------------------------------
+        # ZONE_OPEN is the PRIMARY discriminator: in daylight the ZONE_CLOSED
+        # area can have high background brightness (sunlit ground/concrete)
+        # making closed_hit unreliable as a standalone signal.  ZONE_OPEN
+        # (upper sky/vegetation band) is almost always dark when closed, so
+        # a marker there is a clean OPEN signal.
+        #
+        #   open_hit  → OPEN  (regardless of closed_hit noise)
+        #   ¬open_hit + closed_hit → CLOSED
+        #   ¬open_hit + ¬closed_hit → UNCERTAIN (fog/darkness/obstruction)
+        # ---------------------------------------------------------------
+        if open_hit:
+            state = "open"
+            # Light penalty if closed zone also has anomalous brightness.
+            confidence = open_score * (1.0 - closed_score * 0.15)
+        elif closed_hit:
+            state = "closed"
+            confidence = closed_score
+        else:
+            state = "uncertain"
+            confidence = 0.0
 
-    def _extract_roi(self, frame: np.ndarray) -> np.ndarray:
-        if config.ROI is None:
-            return frame
-        x, y, w, h = config.ROI
-        return frame[y : y + h, x : x + w]
+        logger.info(
+            "classify: %-9s conf=%.2f  closed=%s(%.2f)  open=%s(%.2f)"
+            "  drift=(%+d,%+d)  ir=%s",
+            state, confidence,
+            "HIT " if closed_hit else "miss", closed_score,
+            "HIT " if open_hit   else "miss", open_score,
+            dx, dy, ir,
+        )
+        return FrameResult(
+            state=state, confidence=confidence,
+            closed_score=closed_score, open_score=open_score,
+            anchor_offset=offset, quality=quality, is_ir=ir,
+            closed_result=closed_res, open_result=open_res,
+        )
 
-    def _compute_change(self, roi: np.ndarray) -> float:
-        """Return fraction of pixels whose intensity changed beyond threshold."""
-        # Convert to grayscale for a single-channel diff.
-        gray_current  = cv2.cvtColor(roi,            cv2.COLOR_BGR2GRAY)
-        gray_baseline = cv2.cvtColor(self._baseline, cv2.COLOR_BGR2GRAY)
+    def annotate(self, frame: np.ndarray, result: FrameResult) -> np.ndarray:
+        """Return an annotated debug copy of the frame."""
+        if result.closed_result is None or result.open_result is None:
+            return frame.copy()
+        return annotate_frame(
+            frame,
+            closed_result=result.closed_result,
+            open_result=result.open_result,
+            anchor_offset=result.anchor_offset,
+            state=result.state,
+            confidence=result.confidence,
+            is_ir=result.is_ir,
+        )
 
-        diff = cv2.absdiff(gray_current, gray_baseline)
-        changed_pixels = int(np.sum(diff > config.PIXEL_DIFF_THRESHOLD))
-        total_pixels   = diff.size
-        return changed_pixels / total_pixels if total_pixels > 0 else 0.0
+
+# ---------------------------------------------------------------------------
+# Temporal aggregator
+# ---------------------------------------------------------------------------
+
+class TemporalAggregator:
+    """
+    Sliding-window smoother biased toward *fewer* false state transitions.
+
+    - Uncertain and low-quality frames are discarded before entering the window.
+    - A new state is committed only when FLIP_THRESHOLD qualifying frames agree.
+    - Window length = WINDOW_SIZE; threshold = FLIP_THRESHOLD.
+      Default: 7 frames, 6-of-7 majority ≈ 85 % — very conservative.
+    """
+
+    def __init__(self) -> None:
+        self._window: collections.deque[FrameResult] = collections.deque(
+            maxlen=config.WINDOW_SIZE
+        )
+        self._reported_state: str = "unknown"
+
+    @property
+    def reported_state(self) -> str:
+        return self._reported_state
+
+    def update(self, result: FrameResult) -> tuple[str, dict]:
+        """
+        Feed a FrameResult.  Returns (reported_state, debug_dict).
+        """
+        skipped = (
+            result.state == "uncertain"
+            or result.quality < config.MIN_FRAME_QUALITY
+        )
+        if skipped:
+            logger.debug(
+                "Frame discarded (state=%s quality=%.2f)", result.state, result.quality
+            )
+            return self._reported_state, self._debug_dict(result, skipped=True)
+
+        self._window.append(result)
+
+        votes: dict[str, int] = {"open": 0, "closed": 0}
+        for r in self._window:
+            if r.state in votes:
+                votes[r.state] += 1
+
+        dominant = max(votes, key=lambda k: votes[k])
+        if votes[dominant] >= config.FLIP_THRESHOLD and dominant != self._reported_state:
+            prev = self._reported_state
+            self._reported_state = dominant
+            logger.info(
+                "STATE FLIP: %s → %s  (open=%d closed=%d window=%d/%d)",
+                prev, dominant,
+                votes["open"], votes["closed"],
+                len(self._window), config.WINDOW_SIZE,
+            )
+
+        return self._reported_state, self._debug_dict(result, skipped=False, votes=votes)
+
+    def window_snapshot(self) -> list[FrameResult]:
+        return list(self._window)
+
+    def _debug_dict(
+        self,
+        result: FrameResult,
+        *,
+        skipped: bool,
+        votes: dict | None = None,
+    ) -> dict:
+        return {
+            "frame_state": result.state,
+            "frame_confidence": result.confidence,
+            "frame_quality": result.quality,
+            "frame_ir": result.is_ir,
+            "frame_drift": list(result.anchor_offset) if result.anchor_offset else None,
+            "skipped": skipped,
+            "window_size": len(self._window),
+            "votes": votes or {},
+            "reported_state": self._reported_state,
+        }
+

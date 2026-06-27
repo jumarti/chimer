@@ -14,6 +14,12 @@ __pycache__/
 .venv/
 # uv.lock is intentionally committed for reproducible installs
 
+# Secrets
+.env
+
+# Local data (bulk captures + debug frames — NOT tests/fixtures/)
+.data/
+
 # OS
 .DS_Store
 Thumbs.db
