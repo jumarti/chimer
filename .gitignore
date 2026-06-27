@@ -11,6 +11,8 @@ build/
 # Python
 __pycache__/
 *.pyc
+.venv/
+# uv.lock is intentionally committed for reproducible installs
 
 # OS
 .DS_Store
