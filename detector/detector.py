@@ -155,11 +155,17 @@ class GateClassifier:
             if latch_hit:
                 state      = "closed"
                 confidence = latch_res.confidence
+            elif ir and closed_hit:
+                # IR fallback: ZONE_LATCH missed (marker drifted or dim) but
+                # ZONE_CLOSED sees a strong marker.  At night, concrete is dark
+                # so ZONE_CLOSED has no false positives — safe to trust it.
+                state      = "closed"
+                confidence = closed_score * 0.8  # slightly lower than direct latch hit
             elif open_hit:
                 state      = "open"
                 confidence = open_score
             else:
-                # Markers are between zones — gate is slightly ajar.
+                # Markers absent from both latch and open zones → gate is ajar.
                 state      = "open"
                 confidence = 0.45  # inferred from absence; counts in window (> MIN_FRAME_QUALITY)
             quality = max(latch_res.confidence, open_score) if latch_hit or open_hit else 0.5
