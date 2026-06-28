@@ -5,6 +5,11 @@
 # Build context is the detector/ directory (set in docker-compose.yml).
 # Runtime configuration is supplied via .env (env_file in compose) — no
 # credentials or zone geometry are baked into the image.
+#
+# The image defaults to a non-root "detector" user (UID 1000).  When run via
+# docker compose, the calling host user overrides this via
+#   user: "${UID}:${GID}"
+# so files written to bind-mounted volumes appear on the host owned by you.
 
 FROM python:3.11-slim
 
@@ -18,13 +23,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libglib2.0-0 \
     && rm -rf /var/lib/apt/lists/*
 
+# Create a dedicated non-root user.  UID 1000 matches most first-user Linux
+# accounts, which reduces chown work when running without compose overrides.
+RUN useradd --no-log-init -r -u 1000 -s /sbin/nologin detector
+
 WORKDIR /app
 
 # Install Python dependencies before copying the full source so Docker can
 # cache this layer independently of code changes.
 COPY pyproject.toml ./
 RUN pip install --no-cache-dir \
-        flask>=3.0 \
+        "flask>=3.0" \
         "numpy>=1.24" \
         "opencv-python>=4.8" \
         "python-dotenv>=1.0"
@@ -33,9 +42,14 @@ RUN pip install --no-cache-dir \
 # .dockerignore — they are not needed at runtime).
 COPY . .
 
-# Create runtime data directories; they will normally be bind-mounted but
-# having them present avoids permission errors if the volume is absent.
-RUN mkdir -p .data/debug .data/captures
+# Create data mount-point directories, then hand the whole tree to the
+# detector user so the process can write even without a bind mount.
+RUN mkdir -p .data/debug .data/captures \
+    && chown -R detector /app
+
+# Default to the non-root user.  docker compose overrides this at runtime
+# with the host user's UID:GID via the user: directive.
+USER detector
 
 # Flask service port — runtime value comes from PORT env var (config.py).
 EXPOSE 8080

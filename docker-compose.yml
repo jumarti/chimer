@@ -4,7 +4,7 @@
 #
 # Quick start:
 #   cp detector/.env.example detector/.env
-#   # edit detector/.env — set RTSP_URL at minimum
+#   # edit detector/.env — set RTSP_URL, UID=$(id -u), GID=$(id -g)
 #   docker compose up -d
 #   curl http://localhost:8080/health
 
@@ -13,6 +13,9 @@ services:
     build:
       context: ./detector
       dockerfile: Dockerfile
+    # Run as the calling host user so bind-mounted files are owned by you.
+    # Set UID and GID in detector/.env (see .env.example).
+    user: "${UID:-1000}:${GID:-1000}"
     # Load runtime config from detector/.env.
     # Only RTSP_URL is required; all other settings have safe defaults.
     env_file: ./detector/.env
@@ -21,12 +24,9 @@ services:
       # the Flask bind port and the host-side mapping simultaneously.
       - "${PORT:-8080}:${PORT:-8080}"
     volumes:
-      # Persist debug bundles (annotated frames saved on state changes).
-      - detector_debug:/app/.data/debug
-      # Persist raw captures (only written when SAVE_CAPTURES=true in .env).
-      - detector_captures:/app/.data/captures
+      # Bind-mount host directories so debug bundles and captures are
+      # directly accessible without docker cp.  Host paths are relative
+      # to this file (repo root) and can be overridden in detector/.env.
+      - ${DEBUG_HOST_DIR:-./data/debug}:/app/.data/debug
+      - ${CAPTURES_HOST_DIR:-./data/captures}:/app/.data/captures
     restart: unless-stopped
-
-volumes:
-  detector_debug:
-  detector_captures:
