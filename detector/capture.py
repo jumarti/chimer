@@ -31,8 +31,11 @@ CaptureMethod = Literal["opencv", "ffmpeg"]
 def grab_frame_opencv(url: str | None = None) -> np.ndarray | None:
     """Grab the latest frame via cv2.VideoCapture."""
     url = url or config.RTSP_URL
-    cap = cv2.VideoCapture(url, cv2.CAP_FFMPEG)
+    cap = cv2.VideoCapture()
+    cap.set(cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, config.CAMERA_OPEN_TIMEOUT_MS)
+    cap.set(cv2.CAP_PROP_READ_TIMEOUT_MSEC, config.CAMERA_READ_TIMEOUT_MS)
     cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+    cap.open(url, cv2.CAP_FFMPEG)
     try:
         if not cap.isOpened():
             logger.warning("OpenCV: cannot open stream %s", url)

@@ -1,0 +1,30 @@
+# Files and directories to exclude from the Docker build context.
+# The build context is detector/ (set by `context: ./detector` in compose).
+
+# Python runtime artifacts
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.pytest_cache/
+
+# Virtual environment — dependencies are installed fresh in the image
+.venv/
+venv/
+
+# Runtime data — these directories are mounted as volumes at runtime
+.data/
+
+# Credentials — never bake .env into an image
+.env
+
+# Development / calibration tools not needed at runtime
+calibrate.py
+tools/
+tests/
+
+# Editor and OS noise
+.vscode/
+.idea/
+*.swp
+.DS_Store

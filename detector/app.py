@@ -218,10 +218,15 @@ def main() -> None:
     args = parser.parse_args()
 
     logger.info("RTSP URL   : %s", config.RTSP_URL)
+    logger.info("Capture    : %s  ffmpeg_timeout=%ds  cv_open=%dms  cv_read=%dms",
+                config.CAPTURE_METHOD, config.FFMPEG_TIMEOUT_S,
+                config.CAMERA_OPEN_TIMEOUT_MS, config.CAMERA_READ_TIMEOUT_MS)
     logger.info("Poll every : %.0f s", config.POLL_INTERVAL_S)
     logger.info("Window     : %d frames, flip at %d", config.WINDOW_SIZE, config.FLIP_THRESHOLD)
     logger.info("ZONE_CLOSED: %s", config.ZONE_CLOSED)
     logger.info("ZONE_OPEN  : %s", config.ZONE_OPEN)
+    logger.info("Debug      : dir=%s  on_change=%s  ring=%d",
+                config.DEBUG_DIR, config.DEBUG_ON_CHANGE, config.DEBUG_RING_SIZE)
     logger.info("Listening  : http://%s:%d", config.HOST, args.port)
 
     poll_thread = threading.Thread(target=_poll_loop, daemon=True, name="poll")

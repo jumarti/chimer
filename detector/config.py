@@ -3,6 +3,10 @@ detector/config.py — all tuneable parameters in one place.
 
 Sensitive values (RTSP_URL) come from .env (gitignored).
 Copy .env.example → .env and fill in credentials before running.
+
+Runtime-operational settings can be overridden via environment variables so
+that Docker deployments do not need to modify code or rebuild the image.
+Detection-geometry constants (ZONE_*, thresholds, calibration) remain in code.
 """
 from __future__ import annotations
 
@@ -13,18 +17,45 @@ from dotenv import load_dotenv
 
 load_dotenv(Path(__file__).parent / ".env")
 
+
+def _env_str(key: str, default: str) -> str:
+    return os.environ.get(key, default)
+
+
+def _env_int(key: str, default: int) -> int:
+    raw = os.environ.get(key)
+    return int(raw) if raw is not None else default
+
+
+def _env_float(key: str, default: float) -> float:
+    raw = os.environ.get(key)
+    return float(raw) if raw is not None else default
+
+
+def _env_bool(key: str, default: bool) -> bool:
+    raw = os.environ.get(key)
+    if raw is None:
+        return default
+    return raw.strip().lower() not in ("0", "false", "no", "off", "")
+
+
 # ---------------------------------------------------------------------------
 # Camera / capture
 # ---------------------------------------------------------------------------
-RTSP_URL: str = os.environ.get("RTSP_URL", "rtsp://CHANGE_ME/stream")
+RTSP_URL: str = _env_str("RTSP_URL", "rtsp://CHANGE_ME/stream")
 
 # Seconds between image polls.  4 s × 5-frame window ≈ 20 s of context.
-POLL_INTERVAL_S: float = 4.0
+POLL_INTERVAL_S: float = _env_float("POLL_INTERVAL_S", 4.0)
 
 # Capture backend.  Both are tried; primary goes first, fallback on failure.
 # "opencv" uses cv2.VideoCapture; "ffmpeg" spawns a subprocess.
-CAPTURE_METHOD: str = "opencv"  # "opencv" | "ffmpeg"
-FFMPEG_TIMEOUT_S: int = 12
+CAPTURE_METHOD: str = _env_str("CAPTURE_METHOD", "opencv")  # "opencv" | "ffmpeg"
+FFMPEG_TIMEOUT_S: int = _env_int("FFMPEG_TIMEOUT_S", 12)
+
+# cv2.VideoCapture connection and read timeouts (milliseconds).
+# Prevents grab()/retrieve() from blocking indefinitely on a stale TCP connection.
+CAMERA_OPEN_TIMEOUT_MS: int = _env_int("CAMERA_OPEN_TIMEOUT_MS", 5_000)
+CAMERA_READ_TIMEOUT_MS: int = _env_int("CAMERA_READ_TIMEOUT_MS", 5_000)
 
 # ---------------------------------------------------------------------------
 # Detection zones  (x, y, width, height)  — native camera-frame pixels.
@@ -148,15 +179,15 @@ MIN_FRAME_QUALITY: float = 0.25
 # ---------------------------------------------------------------------------
 # Debug / logging
 # ---------------------------------------------------------------------------
-DEBUG_DIR: str = ".data/debug"
-DEBUG_ON_CHANGE: bool = True
-DEBUG_RING_SIZE: int = 3   # extra frames before a state change also saved
+DEBUG_DIR: str        = _env_str("DEBUG_DIR", ".data/debug")
+DEBUG_ON_CHANGE: bool = _env_bool("DEBUG_ON_CHANGE", True)
+DEBUG_RING_SIZE: int  = _env_int("DEBUG_RING_SIZE", 3)   # extra frames before a state change also saved
 
-CAPTURES_DIR: str = ".data/captures"
-SAVE_CAPTURES: bool = False  # set True to save every polled frame
+CAPTURES_DIR: str  = _env_str("CAPTURES_DIR", ".data/captures")
+SAVE_CAPTURES: bool = _env_bool("SAVE_CAPTURES", False)  # set True to save every polled frame
 
 # ---------------------------------------------------------------------------
 # Server
 # ---------------------------------------------------------------------------
-HOST: str = "0.0.0.0"
-PORT: int = 8080
+HOST: str = _env_str("HOST", "0.0.0.0")
+PORT: int = _env_int("PORT", 8080)

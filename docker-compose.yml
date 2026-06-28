@@ -1,0 +1,32 @@
+# docker-compose.yml — repo root
+#
+# Starts the gate-detector REST service.
+#
+# Quick start:
+#   cp detector/.env.example detector/.env
+#   # edit detector/.env — set RTSP_URL at minimum
+#   docker compose up -d
+#   curl http://localhost:8080/health
+
+services:
+  detector:
+    build:
+      context: ./detector
+      dockerfile: Dockerfile
+    # Load runtime config from detector/.env.
+    # Only RTSP_URL is required; all other settings have safe defaults.
+    env_file: ./detector/.env
+    ports:
+      # Publish the configured port.  Override PORT in .env to change both
+      # the Flask bind port and the host-side mapping simultaneously.
+      - "${PORT:-8080}:${PORT:-8080}"
+    volumes:
+      # Persist debug bundles (annotated frames saved on state changes).
+      - detector_debug:/app/.data/debug
+      # Persist raw captures (only written when SAVE_CAPTURES=true in .env).
+      - detector_captures:/app/.data/captures
+    restart: unless-stopped
+
+volumes:
+  detector_debug:
+  detector_captures:

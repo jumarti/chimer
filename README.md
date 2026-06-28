@@ -153,6 +153,48 @@ cd detector && uv run pytest -q
 
 ---
 
+### Running with Docker
+
+The detector service ships a `Dockerfile` and a repo-root `docker-compose.yml`.
+
+**Quick start:**
+```bash
+cp detector/.env.example detector/.env
+# Edit detector/.env — set RTSP_URL at minimum, then:
+docker compose up -d
+curl http://localhost:8080/health
+```
+
+**Environment variables (via `detector/.env`):**
+
+| Variable | Required | Default | Notes |
+|---|---|---|---|
+| `RTSP_URL` | ✅ | — | Full RTSP URL including credentials |
+| `PORT` | | `8080` | Flask bind port; also controls the host-side mapping in compose |
+| `HOST` | | `0.0.0.0` | Flask bind address |
+| `CAPTURE_METHOD` | | `opencv` | `opencv` or `ffmpeg` |
+| `POLL_INTERVAL_S` | | `4.0` | Seconds between camera polls |
+| `FFMPEG_TIMEOUT_S` | | `12` | ffmpeg subprocess timeout |
+| `CAMERA_OPEN_TIMEOUT_MS` | | `5000` | OpenCV connection timeout |
+| `CAMERA_READ_TIMEOUT_MS` | | `5000` | OpenCV read timeout |
+| `DEBUG_ON_CHANGE` | | `true` | Save annotated frames on state flip |
+| `DEBUG_RING_SIZE` | | `3` | Extra frames saved before each state change |
+| `DEBUG_DIR` | | `.data/debug` | Debug bundle path inside the container |
+| `SAVE_CAPTURES` | | `false` | Save every polled frame (can fill disk) |
+| `CAPTURES_DIR` | | `.data/captures` | Capture path inside the container |
+
+**Persistent storage:**
+
+Debug bundles and captures are stored in named Docker volumes (`detector_debug`, `detector_captures`). They survive container restarts and recreations. To browse debug frames on the host:
+
+```bash
+docker compose cp detector:/app/.data/debug ./local-debug
+```
+
+**Detection geometry stays in code** — `ZONE_*` rectangles and blob thresholds are not env-configurable by design. Recalibrate by editing `detector/config.py` and rebuilding the image (`docker compose build detector`).
+
+---
+
 ## Gate mock service (`tools/gate_service.py`)
 
 Zero-dependency Python server that emulates the gate-state REST service so you can test all three device states without real hardware.
