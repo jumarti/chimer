@@ -125,8 +125,33 @@ class GateClassifier:
         closed_hit = closed_res.has_marker
         open_hit   = open_res.has_marker
 
-        # ---------------------------------------------------------------
-        # Classification logic — two modes depending on ZONE_LATCH.
+        # Frame-level sanity: if both zones are completely dark the camera is
+        # temporarily blinded (AGC recovering from a bright headlight).  Skip
+        # the frame entirely so the aggregator ignores it.
+        if closed_res.bright_px == 0 and open_res.bright_px == 0:
+            logger.warning("Both zones dark — camera may be blinded, returning UNCERTAIN")
+            return FrameResult(
+                state="uncertain", confidence=0.0,
+                closed_score=0.0, open_score=0.0,
+                anchor_offset=offset, quality=0.0, is_ir=ir,
+                closed_result=closed_res, open_result=open_res,
+            )
+
+        # ZONE_OPEN saturation guard: raw bright_px far exceeding any real marker
+        # signals a vehicle headlight or direct sun in frame — treat as UNCERTAIN.
+        # Real gate-bar markers produce 475-710 px; headlights produce 7000+ px.
+        _OPEN_SAT_LIMIT = config.ZONE_BRIGHT_MIN_PX * 80  # 50 * 80 = 4000 px
+        if open_res.bright_px > _OPEN_SAT_LIMIT:
+            logger.warning(
+                "ZONE_OPEN saturated (%d px > %d) — headlight/sun in frame, UNCERTAIN",
+                open_res.bright_px, _OPEN_SAT_LIMIT,
+            )
+            return FrameResult(
+                state="uncertain", confidence=0.0,
+                closed_score=0.0, open_score=0.0,
+                anchor_offset=offset, quality=0.0, is_ir=ir,
+                closed_result=closed_res, open_result=open_res,
+            )
         # ---------------------------------------------------------------
         if config.ZONE_LATCH is not None:
             # --- LATCH-PRIMARY mode (fine-grained, requires calibration) ---

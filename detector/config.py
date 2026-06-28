@@ -83,7 +83,7 @@ BRIGHT_THRESHOLD_IR:  int = 200  # IR / night mode
 
 # Connected-component blob size limits (pixels).
 MIN_BLOB_AREA: int = 40
-MAX_BLOB_AREA: int = 12_000
+MAX_BLOB_AREA: int = 3_000  # real markers 50-1600 px; headlights/sun 7000+ px
 
 # Fraction of bounding-box pixels that must be bright (solidity filter).
 MIN_BLOB_SOLIDITY: float = 0.30
