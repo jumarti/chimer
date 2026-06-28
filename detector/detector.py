@@ -180,19 +180,35 @@ class GateClassifier:
             if latch_hit:
                 state      = "closed"
                 confidence = latch_res.confidence
-            elif ir and closed_hit:
-                # IR fallback: ZONE_LATCH missed (marker drifted or dim) but
-                # ZONE_CLOSED sees a strong marker.  At night, concrete is dark
-                # so ZONE_CLOSED has no false positives — safe to trust it.
-                state      = "closed"
-                confidence = closed_score * 0.8  # slightly lower than direct latch hit
-            elif open_hit:
-                state      = "open"
-                confidence = open_score
             else:
-                # Markers absent from both latch and open zones → gate is ajar.
-                state      = "open"
-                confidence = 0.45  # inferred from absence; counts in window (> MIN_FRAME_QUALITY)
+                # IR dim fallback: re-check ZONE_LATCH at a lower threshold.
+                # Handles cases where the marker is at the latch position but
+                # dim (AGC, weak IR illumination).  Uses ZONE_LATCH (not
+                # ZONE_CLOSED) to preserve spatial discrimination: an open-gate
+                # marker in the lower part of ZONE_CLOSED will NOT appear in
+                # the tight ZONE_LATCH regardless of threshold.
+                if ir:
+                    latch_dim_res = find_blobs_in_zone(
+                        frame, _shift(config.ZONE_LATCH), margin=0,
+                        bright_threshold=config.BRIGHT_THRESHOLD_IR_LATCH_DIM,
+                    )
+                    latch_dim_hit = (
+                        sum(b.area for b in latch_dim_res.blobs)
+                        >= config.LATCH_MIN_BLOB_AREA
+                    )
+                else:
+                    latch_dim_hit = False
+
+                if latch_dim_hit:
+                    state      = "closed"
+                    confidence = min(latch_dim_res.confidence, 0.7)  # lower than direct hit
+                elif open_hit:
+                    state      = "open"
+                    confidence = open_score
+                else:
+                    # Markers absent from both latch zones and open zone → gate is ajar.
+                    state      = "open"
+                    confidence = 0.45  # inferred from absence; counts in window (> MIN_FRAME_QUALITY)
             quality = max(latch_res.confidence, open_score) if latch_hit or open_hit else 0.5
         else:
             # --- ZONE_OPEN-PRIMARY mode (default, works without calibration) ---
