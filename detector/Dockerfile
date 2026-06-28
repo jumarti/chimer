@@ -17,11 +17,16 @@ FROM python:3.11-slim
 #   ffmpeg   — fallback RTSP capture backend (capture.py subprocess path)
 #   libgl1   — linked by opencv-python wheel (headless display stub)
 #   libglib2.0-0 — glib runtime needed by OpenCV
-RUN apt-get update && apt-get install -y --no-install-recommends \
+#   tzdata   — timezone database (needed to honour TZ env var)
+RUN DEBIAN_FRONTEND=noninteractive apt-get update && apt-get install -y --no-install-recommends \
         ffmpeg \
         libgl1 \
         libglib2.0-0 \
+        tzdata \
     && rm -rf /var/lib/apt/lists/*
+
+# Timezone — Python's time/datetime functions honour this env var directly.
+ENV TZ=America/Bogota
 
 # Create a dedicated non-root user.  UID 1000 matches most first-user Linux
 # accounts, which reduces chown work when running without compose overrides.

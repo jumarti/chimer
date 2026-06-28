@@ -23,6 +23,8 @@ import collections
 import io
 import json
 import logging
+import signal
+import sys
 import threading
 import time
 from datetime import datetime, timezone
@@ -231,6 +233,10 @@ def main() -> None:
 
     poll_thread = threading.Thread(target=_poll_loop, daemon=True, name="poll")
     poll_thread.start()
+
+    # Exit immediately on SIGTERM (docker stop) instead of waiting for Flask's
+    # internal shutdown timeout, which can be up to 10+ seconds.
+    signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
 
     app.run(host=config.HOST, port=args.port, debug=args.debug, use_reloader=False)
 
