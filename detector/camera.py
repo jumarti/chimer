@@ -59,10 +59,13 @@ class CameraPoller:
     def _run(self) -> None:
         while not self._stop_event.is_set():
             self._poll_once()
-            self._stop_event.wait(config.CAMERA_POLL_INTERVAL)
+            self._stop_event.wait(config.POLL_INTERVAL_S)
 
     def _poll_once(self) -> None:
-        cap = cv2.VideoCapture(config.RTSP_URL)
+        cap = cv2.VideoCapture()
+        cap.set(cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, config.CAMERA_OPEN_TIMEOUT_MS)
+        cap.set(cv2.CAP_PROP_READ_TIMEOUT_MSEC, config.CAMERA_READ_TIMEOUT_MS)
+        cap.open(config.RTSP_URL)
         try:
             if not cap.isOpened():
                 logger.warning("Cannot open RTSP stream: %s", config.RTSP_URL)
