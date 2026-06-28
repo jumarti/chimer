@@ -142,9 +142,16 @@ class GateClassifier:
                 frame, _shift(config.ZONE_LATCH), margin=0,
                 bright_threshold=latch_threshold,
             )
-            # Require a substantial blob to reject concrete scatter (50-110 px);
-            # real marker blobs are 450-1200 px.
-            latch_hit = any(b.area >= config.LATCH_MIN_BLOB_AREA for b in latch_res.blobs)
+            # Require a substantial marker signal in ZONE_LATCH.
+            # IR mode: use sum-of-areas (external lights can fragment the blob into
+            #   several small pieces; concrete is dark at night so false positives
+            #   are not a concern).
+            # DAY mode: use max single-blob (concrete scatter sums can exceed the
+            #   threshold even though no individual blob qualifies).
+            if ir:
+                latch_hit = sum(b.area for b in latch_res.blobs) >= config.LATCH_MIN_BLOB_AREA
+            else:
+                latch_hit = any(b.area >= config.LATCH_MIN_BLOB_AREA for b in latch_res.blobs)
             if latch_hit:
                 state      = "closed"
                 confidence = latch_res.confidence
