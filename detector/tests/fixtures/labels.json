@@ -8,5 +8,22 @@
   "mpv-shot0098.jpg": {"state": "open",   "notes": "gate fully open, 16:04"},
   "mpv-shot0099.jpg": {"state": "open",   "notes": "gate fully open, 16:04"},
   "mpv-shot0100.jpg": {"state": "open",   "notes": "gate fully open, 16:04"},
-  "mpv-shot0115.jpg": {"state": "open",   "notes": "gate open, 18:07, dusk, bar swung left"}
+  "mpv-shot0115.jpg": {"state": "open",   "notes": "gate open, 18:07, dusk, bar swung left"},
+  "mpv-shot0116.jpg": {"state": "open",   "notes": "small blade open",   "requires": "small_blade"},
+  "mpv-shot0117.jpg": {"state": "open",   "notes": "small blade open",   "requires": "small_blade"},
+  "mpv-shot0118.jpg": {"state": "open",   "notes": "small blade open",   "requires": "small_blade"},
+  "mpv-shot0119.jpg": {"state": "open",   "notes": "small blade open",   "requires": "small_blade"},
+  "mpv-shot0120.jpg": {"state": "open",   "notes": "small blade open",   "requires": "small_blade"},
+  "mpv-shot0121.jpg": {"state": "open",   "notes": "small blade open",   "requires": "small_blade"},
+  "mpv-shot0122.jpg": {"state": "open",   "notes": "small blade open",   "requires": "small_blade"},
+  "mpv-shot0123.jpg": {"state": "open",   "notes": "small blade open",   "requires": "small_blade"},
+  "mpv-shot0124.jpg": {"state": "open",   "notes": "small blade open",   "requires": "small_blade"},
+  "mpv-shot0125.jpg": {"state": "open",   "notes": "small blade open",   "requires": "small_blade"},
+  "mpv-shot0126.jpg": {"state": "open",   "notes": "small blade open",   "requires": "small_blade"},
+  "mpv-shot0127.jpg": {"state": "open",   "notes": "small blade open",   "requires": "small_blade"},
+  "mpv-shot0128.jpg": {"state": "open",   "notes": "small blade open",   "requires": "small_blade"},
+  "mpv-shot0129.jpg": {"state": "open",   "notes": "small blade open",   "requires": "small_blade"},
+  "mpv-shot0130.jpg": {"state": "open",   "notes": "small blade open",   "requires": "small_blade"},
+  "mpv-shot0131.jpg": {"state": "open",   "notes": "small blade open",   "requires": "small_blade"},
+  "mpv-shot0132.jpg": {"state": "open",   "notes": "small blade open",   "requires": "small_blade"}
 }

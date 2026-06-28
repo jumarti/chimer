@@ -64,6 +64,44 @@ LATCH_MIN_BLOB_AREA:       int = 200  # px; concrete scatter is 50-110px, marker
 BRIGHT_THRESHOLD_IR_LATCH:     int = 150  # IR latch threshold; nighttime markers can be 140-179 bright
 BRIGHT_THRESHOLD_IR_LATCH_DIM: int = 120  # dim fallback; catches very faint IR markers still at latch position
 
+# ---------------------------------------------------------------------------
+# Small-blade open detection (feature flag)
+# ---------------------------------------------------------------------------
+# When DETECT_SMALL_BLADE_OPEN is True AND both ZONE_SMALL_REST / ZONE_SMALL_OPEN
+# are non-None, GateClassifier adds a second open-detection branch:
+#
+#   big blade latched (latch_hit)
+#   AND small marker ABSENT from ZONE_SMALL_REST
+#   AND small marker PRESENT in ZONE_SMALL_OPEN
+#   → state = "open", open_reason = "small_blade"
+#
+# With the flag False (default) behaviour is byte-for-byte identical to before.
+#
+# Calibrate both zones using:  uv run python calibrate.py --show
+#   ZONE_SMALL_REST — bounding box of the small marker at rest on a closed frame
+#                     (e.g. samples 0070 / 0085).
+#   ZONE_SMALL_OPEN — zone the small marker travels into when the small blade
+#                     opens (derive from samples 0116-0132).
+DETECT_SMALL_BLADE_OPEN: bool = True
+
+# ZONE_SMALL_REST  tight zone around the small marker at rest (both blades closed).
+#   Derived from blob analysis of closed frames (0070, 0085):
+#   marker centroid ≈ (499, 609), bbox ≈ (480, 576, 40, 62).
+#   x ends at 510 so the marker exits cleanly once the blade starts moving right;
+#   y starts at 575 to exclude a persistent structural blob at cy≈564.
+ZONE_SMALL_REST: tuple[int, int, int, int] | None = (460, 575, 50, 75)  # x:460-510  y:575-650
+
+# ZONE_SMALL_OPEN  zone the marker travels into when the small blade opens.
+#   Marker swings right; confirmed positions across IR + DAY frames (0116-0124, 0130-0132):
+#   cx range 530-666, cy range 600-620.  Upper-left chosen to avoid the cx≈563, cy≈522
+#   static reflection that sits just above this zone in some closed frames.
+ZONE_SMALL_OPEN: tuple[int, int, int, int] | None = (515, 565, 215, 100)  # x:515-730  y:565-665
+
+# Minimum blob area to accept as the small marker (mirrors latch logic).
+# Reuses LATCH_MIN_BLOB_AREA by default; override if the small marker is
+# significantly different in size.
+SMALL_BLADE_MIN_BLOB_AREA: int = LATCH_MIN_BLOB_AREA
+
 # Anchor: a fixed reference marker used to measure camera drift and shift
 # both zones to compensate.  Set to None to disable (simpler, less robust).
 # ANCHOR_ZONE  bounding box of the always-visible fixed post marker.

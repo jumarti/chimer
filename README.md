@@ -96,23 +96,28 @@ uv run python app.py --port 9090    # serves on :9090
 
 ### Detection approach
 
-Retroreflective markers are mounted on the gate bar and post. The detector uses three zones (native 2304×1296 coordinates):
+Retroreflective markers are mounted on the gate bar and post. The detector uses zones (native 2304×1296 coordinates):
 
 | Zone | Rect (x,y,w,h) | Purpose |
 |---|---|---|
 | `ZONE_LATCH` | (448, 499, 70, 73) | Tight overlap of both markers when gate is **closed**; primary decision zone |
 | `ZONE_CLOSED` | (387, 455, 207, 261) | Wider area around closed position |
-| `ZONE_OPEN` | (160, 85, 590, 140) | Gate bar travel path when fully open |
+| `ZONE_OPEN` | (160, 85, 590, 140) | Big-blade travel path when gate opens fully |
+| `ZONE_SMALL_REST` | (460, 575, 50, 75) | Small-blade marker at rest (gate closed) |
+| `ZONE_SMALL_OPEN` | (515, 565, 215, 100) | Small-blade marker destination when small blade opens independently |
 
 Classification logic (latch-primary mode):
-1. If `ZONE_LATCH` has a bright blob ≥ 200 px → **closed** (conf 1.0)
-2. IR fallback: if night and `ZONE_LATCH` at lower threshold (120) has blob ≥ 200 px → **closed** (conf 0.7)
-3. If `ZONE_OPEN` has a bright blob → **open**
+1. If `ZONE_LATCH` has a bright blob ≥ 200 px → **closed** (conf 1.0); then check small-blade (step 1a)
+   1. **1a — small-blade check** (feature-flagged via `DETECT_SMALL_BLADE_OPEN`): if marker absent from `ZONE_SMALL_REST` and present in `ZONE_SMALL_OPEN` → override to **open** (`open_reason="small_blade"`)
+2. IR fallback: if night and `ZONE_LATCH` at lower threshold (120) has blob ≥ 200 px → **closed** (conf 0.7); small-blade check also applies here
+3. If `ZONE_OPEN` has a bright blob → **open** (`open_reason="big_blade"`)
 4. Otherwise → **open** by absence (conf 0.45)
 
 Guards: headlight saturation (`ZONE_OPEN` > 4000 px → uncertain), both-zones-dark (AGC washout → uncertain).
 
 Temporal aggregator: 5-frame window, 4-of-5 majority to flip state (~16 s worst-case latency).
+
+Each `FrameResult` carries an `open_reason` field (`"big_blade"` | `"small_blade"` | `None`) serialised in `/debug` responses.
 
 ### Stable baseline — tag `detector-v1.0`
 
@@ -125,6 +130,20 @@ Validated 2026-06-27 against 28 real debug bundles captured during a full day of
 | Night IR (18:56–20:29) | 16/16 ✅ |
 
 8 false positives from earlier code versions are suppressed. To return to this state: `git checkout detector-v1.0`.
+
+### Stable baseline — tag `detector-v1.1`
+
+Adds dual-blade detection: the small blade can open independently while the big blade stays latched. The new code path is isolated behind the `DETECT_SMALL_BLADE_OPEN` flag in `config.py` (default `True`); setting it to `False` reverts to big-blade-only behaviour.
+
+Validated 2026-06-28 against 45 labeled sample images (all conditions tested so far):
+
+| Sample set | Count | Result |
+|---|---|---|
+| Closed (daylight + dusk) | 5 | 5/5 ✅ |
+| Big-blade open | 5 | 5/5 ✅ |
+| Small-blade open (daylight) | 17 | 17/17 ✅ |
+
+**42/42 unit tests pass.** IR night-mode testing of the small-blade path is pending (`detector-v1.2` milestone). To return to this state: `git checkout detector-v1.1`.
 
 ### Running tests
 

@@ -54,6 +54,9 @@ class FrameResult:
     quality: float        # max(closed_score, open_score) — frame usefulness
     is_ir: bool
     timestamp: float = field(default_factory=time.time)
+    # "big_blade" | "small_blade" | None.  Set when state=="open";
+    # None for closed/uncertain or when flag is off.
+    open_reason: str | None = field(default=None)
     # Kept for annotation; excluded from JSON serialisation.
     closed_result: ZoneResult | None = field(default=None, repr=False)
     open_result:   ZoneResult | None = field(default=None, repr=False)
@@ -68,6 +71,7 @@ class FrameResult:
             "anchor_offset": list(self.anchor_offset) if self.anchor_offset else None,
             "quality": round(self.quality, 4),
             "is_ir": self.is_ir,
+            "open_reason": self.open_reason,
             "timestamp": self.timestamp,
         }
 
@@ -153,6 +157,7 @@ class GateClassifier:
                 closed_result=closed_res, open_result=open_res,
             )
         # ---------------------------------------------------------------
+        open_reason: str | None = None
         if config.ZONE_LATCH is not None:
             # --- LATCH-PRIMARY mode (fine-grained, requires calibration) ---
             # ZONE_LATCH is a tight zone that covers ONLY the retroreflective
@@ -180,6 +185,53 @@ class GateClassifier:
             if latch_hit:
                 state      = "closed"
                 confidence = latch_res.confidence
+                # --- Small-blade-open check (feature-flagged) ---------------
+                # Even though the big-blade marker is at its latch position,
+                # the small blade may be open.  Detected by: small marker
+                # absent from its rest zone AND present in its open zone.
+                if (
+                    config.DETECT_SMALL_BLADE_OPEN
+                    and config.ZONE_SMALL_REST is not None
+                    and config.ZONE_SMALL_OPEN is not None
+                ):
+                    # REST zone: use the dim IR threshold so we reliably detect
+                    # the marker even in low-IR-illumination closed frames and
+                    # avoid false "marker absent" readings.
+                    small_rest_threshold = (
+                        config.BRIGHT_THRESHOLD_IR_LATCH_DIM if ir else threshold
+                    )
+                    small_rest_res = find_blobs_in_zone(
+                        frame, _shift(config.ZONE_SMALL_REST), margin=0,
+                        bright_threshold=small_rest_threshold,
+                    )
+                    # OPEN zone: use the standard IR/day threshold so only a
+                    # clearly-bright marker (not scattered noise) qualifies.
+                    small_open_res = find_blobs_in_zone(
+                        frame, _shift(config.ZONE_SMALL_OPEN), margin=config.SEARCH_MARGIN,
+                        bright_threshold=threshold,
+                    )
+                    # Area-based checks mirror the latch logic: sum in IR mode
+                    # (fragmentation), max single-blob in day mode (scatter).
+                    if ir:
+                        small_rest_area = sum(b.area for b in small_rest_res.blobs)
+                        small_open_area = sum(b.area for b in small_open_res.blobs)
+                    else:
+                        small_rest_area = max(
+                            (b.area for b in small_rest_res.blobs), default=0
+                        )
+                        small_open_area = max(
+                            (b.area for b in small_open_res.blobs), default=0
+                        )
+                    small_rest_hit = small_rest_area >= config.SMALL_BLADE_MIN_BLOB_AREA
+                    if not small_rest_hit and small_open_area >= config.SMALL_BLADE_MIN_BLOB_AREA:
+                        state       = "open"
+                        open_reason = "small_blade"
+                        confidence  = small_open_res.confidence
+                        logger.info(
+                            "Small-blade open detected: rest_area=%d open_area=%d conf=%.2f",
+                            small_rest_area, small_open_area, confidence,
+                        )
+                # ------------------------------------------------------------
             else:
                 # IR dim fallback: re-check ZONE_LATCH at a lower threshold.
                 # Handles cases where the marker is at the latch position but
@@ -204,10 +256,12 @@ class GateClassifier:
                     confidence = min(latch_dim_res.confidence, 0.7)  # lower than direct hit
                 elif open_hit:
                     state      = "open"
+                    open_reason = "big_blade"
                     confidence = open_score
                 else:
                     # Markers absent from both latch zones and open zone → gate is ajar.
                     state      = "open"
+                    open_reason = "big_blade"
                     confidence = 0.45  # inferred from absence; counts in window (> MIN_FRAME_QUALITY)
             quality = max(latch_res.confidence, open_score) if latch_hit or open_hit else 0.5
         else:
@@ -222,6 +276,7 @@ class GateClassifier:
             #   neither               → UNCERTAIN
             if open_hit:
                 state      = "open"
+                open_reason = "big_blade"
                 confidence = open_score * (1.0 - closed_score * 0.15)
             elif closed_hit:
                 state      = "closed"
@@ -233,16 +288,17 @@ class GateClassifier:
 
         logger.info(
             "classify: %-9s conf=%.2f  closed=%s(%.2f)  open=%s(%.2f)"
-            "  drift=(%+d,%+d)  ir=%s",
+            "  drift=(%+d,%+d)  ir=%s  reason=%s",
             state, confidence,
             "HIT " if closed_hit else "miss", closed_score,
             "HIT " if open_hit   else "miss", open_score,
-            dx, dy, ir,
+            dx, dy, ir, open_reason,
         )
         return FrameResult(
             state=state, confidence=confidence,
             closed_score=closed_score, open_score=open_score,
             anchor_offset=offset, quality=quality, is_ir=ir,
+            open_reason=open_reason,
             closed_result=closed_res, open_result=open_res,
         )
 

@@ -54,15 +54,39 @@ def labeled_images(labels) -> list[tuple[str, str, np.ndarray]]:
     """
     List of (filename, expected_state, bgr_frame) for every labeled image
     that can be found on disk.  Images not found are silently skipped.
+
+    Images tagged ``requires="small_blade"`` are excluded here — they are
+    only used by the feature-flagged small-blade tests via ``small_blade_frames``.
     """
     result = []
     for filename, meta in labels.items():
+        if meta.get("requires") == "small_blade":
+            continue
         path = _find_image(filename)
         if path is None:
             continue
         frame = cv2.imread(str(path))
         if frame is not None:
             result.append((filename, meta["state"], frame))
+    return result
+
+
+@pytest.fixture(scope="session")
+def small_blade_frames(labels) -> list[tuple[str, np.ndarray]]:
+    """
+    List of (filename, bgr_frame) for images tagged ``requires="small_blade"``.
+    Used exclusively by TestSmallBladeDetection.
+    """
+    result = []
+    for filename, meta in labels.items():
+        if meta.get("requires") != "small_blade":
+            continue
+        path = _find_image(filename)
+        if path is None:
+            continue
+        frame = cv2.imread(str(path))
+        if frame is not None:
+            result.append((filename, frame))
     return result
 
 
