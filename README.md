@@ -83,6 +83,57 @@ curl http://<device-ip>/play/reja_abierta
 
 ---
 
+## Gate detector service (`detector/`)
+
+Python service that polls a Dahua RTSP camera every 4 s and exposes gate state over HTTP.
+
+```bash
+cd detector
+uv run python app.py --port 9090    # serves on :9090
+```
+
+**Endpoints:** `GET /gate` → `{"gate":"open"|"closed","confidence":float}`, `GET /health`, `GET /debug`, `GET /reset`
+
+### Detection approach
+
+Retroreflective markers are mounted on the gate bar and post. The detector uses three zones (native 2304×1296 coordinates):
+
+| Zone | Rect (x,y,w,h) | Purpose |
+|---|---|---|
+| `ZONE_LATCH` | (448, 499, 70, 73) | Tight overlap of both markers when gate is **closed**; primary decision zone |
+| `ZONE_CLOSED` | (387, 455, 207, 261) | Wider area around closed position |
+| `ZONE_OPEN` | (160, 85, 590, 140) | Gate bar travel path when fully open |
+
+Classification logic (latch-primary mode):
+1. If `ZONE_LATCH` has a bright blob ≥ 200 px → **closed** (conf 1.0)
+2. IR fallback: if night and `ZONE_LATCH` at lower threshold (120) has blob ≥ 200 px → **closed** (conf 0.7)
+3. If `ZONE_OPEN` has a bright blob → **open**
+4. Otherwise → **open** by absence (conf 0.45)
+
+Guards: headlight saturation (`ZONE_OPEN` > 4000 px → uncertain), both-zones-dark (AGC washout → uncertain).
+
+Temporal aggregator: 5-frame window, 4-of-5 majority to flip state (~16 s worst-case latency).
+
+### Stable baseline — tag `detector-v1.0`
+
+Validated 2026-06-27 against 28 real debug bundles captured during a full day of operation (daylight + dusk + IR night). **28/28 bundles correct**, 38/38 unit tests pass.
+
+| Period | Result |
+|---|---|
+| Daylight (18:00–18:10) | 6/6 ✅ |
+| Dusk / early IR (18:35–18:40) | 6/6 ✅ |
+| Night IR (18:56–20:29) | 16/16 ✅ |
+
+8 false positives from earlier code versions are suppressed. To return to this state: `git checkout detector-v1.0`.
+
+### Running tests
+
+```bash
+cd detector && uv run pytest -q
+```
+
+---
+
 ## Gate mock service (`tools/gate_service.py`)
 
 Zero-dependency Python server that emulates the gate-state REST service so you can test all three device states without real hardware.
