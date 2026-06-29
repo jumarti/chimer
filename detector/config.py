@@ -199,3 +199,6 @@ UNCERTAIN_SAMPLE_RATE: int  = _env_int("UNCERTAIN_SAMPLE_RATE", 30)  # 1-in-N fr
 # ---------------------------------------------------------------------------
 HOST: str = _env_str("HOST", "0.0.0.0")
 PORT: int = _env_int("PORT", 8080)
+
+# How often to log the /gate request count (seconds).  0 = disable.
+GATE_LOG_INTERVAL_S: float = _env_float("GATE_LOG_INTERVAL_S", 300.0)  # 5 min

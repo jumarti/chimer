@@ -43,6 +43,10 @@ logging.basicConfig(
     level=getattr(logging, config.LOG_LEVEL.upper(), logging.INFO),
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
+# Werkzeug logs every HTTP request at INFO; keep those quiet unless DEBUG.
+logging.getLogger("werkzeug").setLevel(
+    logging.DEBUG if config.LOG_LEVEL.upper() == "DEBUG" else logging.WARNING
+)
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
@@ -59,6 +63,10 @@ _ring: collections.deque = collections.deque(maxlen=config.DEBUG_RING_SIZE + 1)
 
 # Counter for uncertain-frame sampling
 _uncertain_streak: int = 0
+
+# Periodic /gate request counter
+_gate_req_count: int = 0
+_gate_req_last_log: float = time.time()
 
 # ---------------------------------------------------------------------------
 # CV objects
@@ -187,9 +195,19 @@ app = Flask(__name__)
 
 @app.get("/gate")
 def gate():
+    global _gate_req_count, _gate_req_last_log
     with _lock:
         state  = _reported_state
         result = _latest_result
+
+    _gate_req_count += 1
+    now = time.time()
+    elapsed = now - _gate_req_last_log
+    if config.GATE_LOG_INTERVAL_S > 0 and elapsed >= config.GATE_LOG_INTERVAL_S:
+        logger.info("/gate polled %d times in the last %.0f min",
+                    _gate_req_count, elapsed / 60)
+        _gate_req_count = 0
+        _gate_req_last_log = now
 
     # "unknown" is an internal warmup state; report "closed" to the Arduino
     # so it stays in its safe default (matches gate_service.py mock contract).
