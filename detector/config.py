@@ -187,6 +187,13 @@ DEBUG_RING_SIZE: int  = _env_int("DEBUG_RING_SIZE", 3)   # extra frames before a
 CAPTURES_DIR: str  = _env_str("CAPTURES_DIR", ".data/captures")
 SAVE_CAPTURES: bool = _env_bool("SAVE_CAPTURES", False)  # set True to save every polled frame
 
+# Uncertain-frame sampling: save 1 annotated frame every UNCERTAIN_SAMPLE_RATE
+# consecutive uncertain frames, for post-hoc investigation of dusk/blind cases.
+# Set SAVE_UNCERTAIN_SAMPLES=false to disable entirely.
+UNCERTAIN_SAMPLE_DIR: str  = _env_str("UNCERTAIN_SAMPLE_DIR", ".data/uncertain")
+SAVE_UNCERTAIN_SAMPLES: bool = _env_bool("SAVE_UNCERTAIN_SAMPLES", True)
+UNCERTAIN_SAMPLE_RATE: int  = _env_int("UNCERTAIN_SAMPLE_RATE", 30)  # 1-in-N frames saved
+
 # ---------------------------------------------------------------------------
 # Server
 # ---------------------------------------------------------------------------

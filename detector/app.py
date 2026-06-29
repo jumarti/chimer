@@ -57,6 +57,9 @@ _camera_ok: bool = False
 # Debug ring buffer: deque of (raw_frame, annotated_frame, result)
 _ring: collections.deque = collections.deque(maxlen=config.DEBUG_RING_SIZE + 1)
 
+# Counter for uncertain-frame sampling
+_uncertain_streak: int = 0
+
 # ---------------------------------------------------------------------------
 # CV objects
 # ---------------------------------------------------------------------------
@@ -128,6 +131,9 @@ def _poll_loop_inner() -> None:
         if config.SAVE_CAPTURES:
             _save_capture(frame)
 
+        if config.SAVE_UNCERTAIN_SAMPLES:
+            _maybe_save_uncertain(result.state, annotated)
+
         with _lock:
             prev_state = _reported_state
             _reported_state   = new_state
@@ -142,6 +148,25 @@ def _poll_loop_inner() -> None:
         elapsed = time.monotonic() - start
         sleep_s = max(0.0, config.POLL_INTERVAL_S - elapsed)
         time.sleep(sleep_s)
+
+
+def _maybe_save_uncertain(state: str, annotated: np.ndarray) -> None:
+    global _uncertain_streak
+    if state != "uncertain":
+        _uncertain_streak = 0
+        return
+    _uncertain_streak += 1
+    if _uncertain_streak % config.UNCERTAIN_SAMPLE_RATE != 1:
+        return  # only save on streak counts 1, 6, 11, …
+    ts = time.strftime("%Y%m%dT%H%M%S")
+    path = Path(config.UNCERTAIN_SAMPLE_DIR)
+    try:
+        path.mkdir(parents=True, exist_ok=True)
+        out = path / f"{ts}_uncertain_{_uncertain_streak:04d}.jpg"
+        cv2.imwrite(str(out), annotated, [cv2.IMWRITE_JPEG_QUALITY, 85])
+        logger.debug("Uncertain sample saved → %s", out)
+    except OSError as e:
+        logger.warning("Could not save uncertain sample: %s", e)
 
 
 def _save_capture(frame: np.ndarray) -> None:
@@ -235,6 +260,8 @@ def _check_writable_dirs() -> None:
         checks.append(("DEBUG_DIR", config.DEBUG_DIR))
     if config.SAVE_CAPTURES:
         checks.append(("CAPTURES_DIR", config.CAPTURES_DIR))
+    if config.SAVE_UNCERTAIN_SAMPLES:
+        checks.append(("UNCERTAIN_SAMPLE_DIR", config.UNCERTAIN_SAMPLE_DIR))
 
     for label, dir_str in checks:
         path = Path(dir_str)
@@ -256,7 +283,13 @@ def main() -> None:
     parser.add_argument("--debug", action="store_true")
     args = parser.parse_args()
 
-    logger.info("RTSP URL   : %s", config.RTSP_URL)
+    try:
+        from urllib.parse import urlparse
+        _u = urlparse(config.RTSP_URL)
+        _rtsp_display = f"{_u.scheme}://{_u.hostname}:{_u.port or 554}"
+    except Exception:
+        _rtsp_display = "<unparseable>"
+    logger.info("RTSP URL   : %s", _rtsp_display)
     logger.info("Capture    : %s  ffmpeg_timeout=%ds  cv_open=%dms  cv_read=%dms",
                 config.CAPTURE_METHOD, config.FFMPEG_TIMEOUT_S,
                 config.CAMERA_OPEN_TIMEOUT_MS, config.CAMERA_READ_TIMEOUT_MS)
@@ -266,6 +299,8 @@ def main() -> None:
     logger.info("ZONE_OPEN  : %s", config.ZONE_OPEN)
     logger.info("Debug      : dir=%s  on_change=%s  ring=%d",
                 config.DEBUG_DIR, config.DEBUG_ON_CHANGE, config.DEBUG_RING_SIZE)
+    logger.info("Uncertain  : dir=%s  enabled=%s  rate=1/%d",
+                config.UNCERTAIN_SAMPLE_DIR, config.SAVE_UNCERTAIN_SAMPLES, config.UNCERTAIN_SAMPLE_RATE)
     logger.info("Log level  : %s", config.LOG_LEVEL.upper())
 
     _check_writable_dirs()
