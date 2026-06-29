@@ -21,7 +21,7 @@ const char* WIFI_PASSWORD = ".Luc2121Luc.";
 // Gate-service configuration
 // --------------------------------------------------
 // Set this to your PC's LAN IP before flashing.
-const char* GATE_SERVICE_URL = "http://172.26.107.202:9090/gate";
+const char* GATE_SERVICE_URL = "http://everest.lan:9090/gate";
 
 // How often to poll the gate service (ms).
 static const uint32_t POLL_INTERVAL_MS  = 5000;
