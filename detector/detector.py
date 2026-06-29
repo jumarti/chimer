@@ -286,7 +286,7 @@ class GateClassifier:
                 confidence = 0.0
             quality = max(closed_score, open_score)
 
-        logger.info(
+        logger.debug(
             "classify: %-9s conf=%.2f  closed=%s(%.2f)  open=%s(%.2f)"
             "  drift=(%+d,%+d)  ir=%s  reason=%s",
             state, confidence,

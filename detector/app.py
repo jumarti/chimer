@@ -23,6 +23,7 @@ import collections
 import io
 import json
 import logging
+import os
 import signal
 import sys
 import threading
@@ -39,7 +40,7 @@ from capture import grab_frame
 from detector import FrameResult, GateClassifier, TemporalAggregator
 
 logging.basicConfig(
-    level=logging.INFO,
+    level=getattr(logging, config.LOG_LEVEL.upper(), logging.INFO),
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
 logger = logging.getLogger(__name__)
@@ -88,7 +89,8 @@ def _save_debug_bundle(tag: str) -> None:
                 json.dump(res.to_dict(), f, indent=2)
         logger.info("Debug bundle saved → %s", bundle)
     except OSError as e:
-        logger.error("Could not save debug bundle: %s", e)
+        logger.exception("Could not save debug bundle: %s", e)
+        raise
 
 
 # ---------------------------------------------------------------------------
@@ -96,6 +98,15 @@ def _save_debug_bundle(tag: str) -> None:
 # ---------------------------------------------------------------------------
 
 def _poll_loop() -> None:
+    global _reported_state, _latest_result, _latest_annotated, _camera_ok
+    try:
+        _poll_loop_inner()
+    except Exception:
+        logger.exception("Fatal error in poll thread — aborting process")
+        os._exit(1)
+
+
+def _poll_loop_inner() -> None:
     global _reported_state, _latest_result, _latest_annotated, _camera_ok
 
     while True:
@@ -213,6 +224,32 @@ def reset():
 # Entry point
 # ---------------------------------------------------------------------------
 
+def _check_writable_dirs() -> None:
+    """Verify that enabled output directories exist and are writable at startup.
+
+    Raises OSError immediately (before the poll thread starts) so the process
+    crashes with a clear message rather than failing silently later.
+    """
+    checks = []
+    if config.DEBUG_ON_CHANGE:
+        checks.append(("DEBUG_DIR", config.DEBUG_DIR))
+    if config.SAVE_CAPTURES:
+        checks.append(("CAPTURES_DIR", config.CAPTURES_DIR))
+
+    for label, dir_str in checks:
+        path = Path(dir_str)
+        path.mkdir(parents=True, exist_ok=True)
+        probe = path / ".write_test"
+        try:
+            probe.touch()
+            probe.unlink()
+        except OSError as e:
+            raise OSError(
+                f"{label}={dir_str!r} is not writable: {e}"
+            ) from e
+        logger.info("Write check OK: %s=%s", label, dir_str)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Gate detector REST service")
     parser.add_argument("--port",  type=int, default=config.PORT)
@@ -229,6 +266,10 @@ def main() -> None:
     logger.info("ZONE_OPEN  : %s", config.ZONE_OPEN)
     logger.info("Debug      : dir=%s  on_change=%s  ring=%d",
                 config.DEBUG_DIR, config.DEBUG_ON_CHANGE, config.DEBUG_RING_SIZE)
+    logger.info("Log level  : %s", config.LOG_LEVEL.upper())
+
+    _check_writable_dirs()
+
     logger.info("Listening  : http://%s:%d", config.HOST, args.port)
 
     poll_thread = threading.Thread(target=_poll_loop, daemon=True, name="poll")

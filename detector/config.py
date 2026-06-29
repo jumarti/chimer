@@ -179,6 +179,7 @@ MIN_FRAME_QUALITY: float = 0.25
 # ---------------------------------------------------------------------------
 # Debug / logging
 # ---------------------------------------------------------------------------
+LOG_LEVEL: str        = _env_str("LOG_LEVEL", "INFO")  # DEBUG | INFO | WARNING | ERROR | CRITICAL
 DEBUG_DIR: str        = _env_str("DEBUG_DIR", ".data/debug")
 DEBUG_ON_CHANGE: bool = _env_bool("DEBUG_ON_CHANGE", True)
 DEBUG_RING_SIZE: int  = _env_int("DEBUG_RING_SIZE", 3)   # extra frames before a state change also saved
