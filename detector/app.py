@@ -209,9 +209,13 @@ def gate():
         _gate_req_count = 0
         _gate_req_last_log = now
 
-    # "unknown" is an internal warmup state; report "closed" to the Arduino
-    # so it stays in its safe default (matches gate_service.py mock contract).
-    gate_value = state if state in ("open", "closed") else "closed"
+    # Map internal states to the three values the client understands.
+    # "unknown" is the warmup state (no frames yet); treat it the same as
+    # "uncertain" so the client can show an indeterminate UI.
+    if state in ("open", "closed"):
+        gate_value = state
+    else:
+        gate_value = "uncertain"
     confidence  = round(result.confidence, 4) if result else 0.0
     ts = result.timestamp if result else time.time()
     return jsonify(

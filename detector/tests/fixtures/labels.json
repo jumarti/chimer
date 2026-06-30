@@ -25,5 +25,6 @@
   "mpv-shot0129.jpg": {"state": "open",   "notes": "small blade open",   "requires": "small_blade"},
   "mpv-shot0130.jpg": {"state": "open",   "notes": "small blade open",   "requires": "small_blade"},
   "mpv-shot0131.jpg": {"state": "open",   "notes": "small blade open",   "requires": "small_blade"},
-  "mpv-shot0132.jpg": {"state": "open",   "notes": "small blade open",   "requires": "small_blade"}
+  "mpv-shot0132.jpg": {"state": "open",   "notes": "small blade open",   "requires": "small_blade"},
+  "mpv-blind-0001.jpg": {"state": "uncertain", "notes": "IR-on-but-daylight transition: uniform mid-grey, no marker contrast"}
 }

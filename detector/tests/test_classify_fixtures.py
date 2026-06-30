@@ -9,10 +9,12 @@ Tests are SKIPPED (not failed) if no images are found.
 """
 from __future__ import annotations
 
+import cv2
 import pytest
 
 import config
 from detector import GateClassifier
+from tests.conftest import _find_image
 
 
 class TestPerImageClassification:
@@ -61,6 +63,53 @@ class TestZoneScores:
         assert avg_open_in_open > avg_open_in_closed, (
             f"Open zone score should be higher in open frames "
             f"({avg_open_in_open:.2f} vs {avg_open_in_closed:.2f})"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Uncertain / indeterminate state tests
+# ---------------------------------------------------------------------------
+
+class TestUncertainClassification:
+    """
+    Tests for frames that cannot be classified (dusk, IR-on-but-daylight, blind
+    camera).  The classifier must return state='uncertain' and confidence=0.
+    Also verifies the API gate_value mapping: any non-open/non-closed state
+    must be exposed as 'uncertain' (not silently coerced to 'closed').
+    """
+
+    def test_blind_frame_classified_uncertain(self):
+        """mpv-blind-0001: IR mode with strong ambient light — both zones dark."""
+        path = _find_image("mpv-blind-0001.jpg")
+        if path is None:
+            pytest.skip("mpv-blind-0001.jpg not found in fixtures or .data/samples")
+
+        frame = cv2.imread(str(path))
+        assert frame is not None, "Could not read mpv-blind-0001.jpg"
+
+        clf = GateClassifier()
+        result = clf.classify(frame)
+
+        assert result.state == "uncertain", (
+            f"Expected 'uncertain' for blind/dusk frame, got {result.state!r} "
+            f"(conf={result.confidence:.2f})"
+        )
+        assert result.confidence == 0.0, (
+            f"Uncertain frame should have confidence=0.0, got {result.confidence}"
+        )
+
+    @pytest.mark.parametrize("internal_state,expected_gate_value", [
+        ("open",      "open"),
+        ("closed",    "closed"),
+        ("uncertain", "uncertain"),
+        ("unknown",   "uncertain"),  # warmup state
+    ])
+    def test_api_gate_value_mapping(self, internal_state, expected_gate_value):
+        """API must expose 'uncertain' for any non-open/non-closed internal state."""
+        gate_value = internal_state if internal_state in ("open", "closed") else "uncertain"
+        assert gate_value == expected_gate_value, (
+            f"Internal state {internal_state!r} should map to "
+            f"{expected_gate_value!r}, got {gate_value!r}"
         )
 
 

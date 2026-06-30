@@ -353,9 +353,8 @@ void renderState(bool blink) {
     }
 
     case GATE_ERROR:
-    case GATE_UNKNOWN:
     default: {
-      // Orange warning triangle
+      // Orange warning triangle — service unreachable
       drawWarningIcon(cx, screenH / 3, 36, 0xFD20 /* orange */);
 
       M5.Display.setTextColor(0xFD20 /* orange */);
@@ -364,6 +363,19 @@ void renderState(bool blink) {
       int lw1 = strlen(line1) * 6;
       M5.Display.setCursor(cx - lw1/2, screenH * 2/3);
       M5.Display.print(line1);
+      break;
+    }
+
+    case GATE_UNKNOWN: {
+      // Grey question mark — service reached but detector is uncertain (dusk, blind, warmup)
+      drawWarningIcon(cx, screenH / 3, 36, TFT_DARKGREY);
+
+      M5.Display.setTextColor(TFT_DARKGREY);
+      M5.Display.setTextSize(1);
+      const char* line1u = "Estado ?";
+      int lw1u = strlen(line1u) * 6;
+      M5.Display.setCursor(cx - lw1u/2, screenH * 2/3);
+      M5.Display.print(line1u);
       break;
     }
   }
@@ -411,6 +423,9 @@ GateState pollGateState() {
   }
   if (body.indexOf("\"closed\"") >= 0) {
     return GATE_CLOSED;
+  }
+  if (body.indexOf("\"uncertain\"") >= 0) {
+    return GATE_UNKNOWN;
   }
 
   Serial.println("poll: could not parse gate state");
