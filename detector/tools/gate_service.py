@@ -7,14 +7,15 @@ Usage:
   python3 tools/gate_service.py --port 9090
 
 Endpoints:
-  GET /gate    -> {"gate":"open"} or {"gate":"closed"}
+  GET /gate    -> {"gate":"open"} or {"gate":"closed"} or {"gate":"uncertain"}
   GET /health  -> {"status":"ok"}
 
 Control the state by writing to tools/state.txt (relative to CWD):
-  echo open   > tools/state.txt
-  echo closed > tools/state.txt
+  echo open      > tools/state.txt
+  echo closed    > tools/state.txt
+  echo uncertain > tools/state.txt
 
-Any value other than "open" is treated as "closed".
+Any value other than "open", "closed", or "uncertain" defaults to "closed".
 """
 
 import argparse
@@ -25,12 +26,15 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 STATE_FILE = os.path.join(os.path.dirname(__file__), "state.txt")
 
 
+VALID_STATES = ("open", "closed", "uncertain")
+
+
 def read_gate_state() -> str:
     """Read gate state from state.txt. Defaults to 'closed' on any error."""
     try:
         with open(STATE_FILE, "r") as f:
             raw = f.read().strip().lower()
-            return "open" if raw == "open" else "closed"
+            return raw if raw in VALID_STATES else "closed"
     except OSError:
         return "closed"
 
@@ -73,8 +77,9 @@ def main() -> None:
     print(f"Gate service listening on http://0.0.0.0:{args.port}")
     print(f"State file: {os.path.abspath(STATE_FILE)}")
     print()
-    print("  Set gate OPEN:   echo open   > tools/state.txt")
-    print("  Set gate CLOSED: echo closed > tools/state.txt")
+    print(f"  Set gate OPEN:      echo open      > tools/state.txt")
+    print(f"  Set gate CLOSED:    echo closed    > tools/state.txt")
+    print(f"  Set gate UNCERTAIN: echo uncertain > tools/state.txt")
     print()
 
     httpd = HTTPServer(("", args.port), GateHandler)
