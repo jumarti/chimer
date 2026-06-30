@@ -363,14 +363,26 @@ class TemporalAggregator:
                 votes[r.state] += 1
 
         dominant = max(votes, key=lambda k: votes[k])
-        if votes[dominant] >= config.FLIP_THRESHOLD and dominant != self._reported_state:
+
+        # Determine the effective flip threshold.  Small-blade open events are
+        # fast (a few seconds) and would never accumulate FLIP_THRESHOLD frames
+        # before the blade closes again.  Use a lower threshold when ALL open
+        # frames in the current window agree on small_blade as the reason.
+        effective_threshold = config.FLIP_THRESHOLD
+        if dominant == "open" and dominant != self._reported_state:
+            open_frames = [r for r in self._window if r.state == "open"]
+            if open_frames and all(r.open_reason == "small_blade" for r in open_frames):
+                effective_threshold = config.FLIP_THRESHOLD_SMALL_BLADE
+
+        if votes[dominant] >= effective_threshold and dominant != self._reported_state:
             prev = self._reported_state
             self._reported_state = dominant
             logger.info(
-                "STATE FLIP: %s → %s  (open=%d closed=%d window=%d/%d)",
+                "STATE FLIP: %s → %s  (open=%d closed=%d window=%d/%d threshold=%d)",
                 prev, dominant,
                 votes["open"], votes["closed"],
                 len(self._window), config.WINDOW_SIZE,
+                effective_threshold,
             )
 
         return self._reported_state, self._debug_dict(result, skipped=False, votes=votes)

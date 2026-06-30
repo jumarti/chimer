@@ -173,6 +173,12 @@ WINDOW_SIZE: int = 5
 # Worst-case detection latency: FLIP_THRESHOLD × POLL_INTERVAL_S = 4 × 4 = 16 s.
 FLIP_THRESHOLD: int = 4
 
+# Lower flip threshold used when ALL qualifying open frames in the window
+# carry open_reason == "small_blade".  The small gate opens and closes fast
+# (a few seconds) so the standard 4-frame requirement is too slow to catch it.
+# 2 consecutive small-blade frames = 8 s at 4 s poll interval.
+FLIP_THRESHOLD_SMALL_BLADE: int = 2
+
 # Frames whose quality is below this threshold are silently discarded.
 MIN_FRAME_QUALITY: float = 0.25
 
