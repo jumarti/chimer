@@ -32,7 +32,7 @@ static const uint32_t REJA_REPEAT_MS    = 30000;
 // How fast the OPEN text blinks (ms per toggle).
 static const uint32_t BLINK_MS          = 500;
 // How long the button mutes audio when gate is OPEN (ms).
-static const uint32_t MUTE_DURATION_MS  = 2UL * 60UL * 1000UL;  // 30 min
+static const uint32_t MUTE_DURATION_MS  = 30UL * 60UL * 1000UL;  // 30 min
 
 // --------------------------------------------------
 // AtomS3R + Atomic Audio-3.5 Base pins
