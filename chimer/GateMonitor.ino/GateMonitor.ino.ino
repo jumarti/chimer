@@ -372,10 +372,14 @@ void renderState(bool blink) {
 
       M5.Display.setTextColor(TFT_DARKGREY);
       M5.Display.setTextSize(1);
-      const char* line1u = "Estado ?";
+      const char* line1u = "Estado de";
+      const char* line2u = "Reja desconocido";
       int lw1u = strlen(line1u) * 6;
+      int lw2u = strlen(line2u) * 6;
       M5.Display.setCursor(cx - lw1u/2, screenH * 2/3);
       M5.Display.print(line1u);
+      M5.Display.setCursor(cx - lw2u/2, screenH * 2/3 + 10);
+      M5.Display.print(line2u);
       break;
     }
   }
