@@ -26,5 +26,8 @@
   "mpv-shot0130.jpg": {"state": "open",   "notes": "small blade open",   "requires": "small_blade"},
   "mpv-shot0131.jpg": {"state": "open",   "notes": "small blade open",   "requires": "small_blade"},
   "mpv-shot0132.jpg": {"state": "open",   "notes": "small blade open",   "requires": "small_blade"},
-  "mpv-blind-0001.jpg": {"state": "uncertain", "notes": "IR-on-but-daylight transition: uniform mid-grey, no marker contrast"}
+  "mpv-blind-0001.jpg":       {"state": "uncertain", "notes": "IR-on-but-daylight transition: uniform mid-grey, no marker contrast"},
+  "frame_glare_01_annotated.jpg": {"state": "uncertain", "notes": "car headlights cause AGC suppression — latch blob too small but latch_max=219 ≥ LATCH_TRACE_THRESHOLD; annotated copy (has box overlays)"},
+  "frame_glare_02_annotated.jpg": {"state": "uncertain", "notes": "car headlights cause AGC suppression — latch blob too small but latch_max=209 ≥ LATCH_TRACE_THRESHOLD; annotated copy (has box overlays)"},
+  "frame_glare_03_annotated.jpg": {"state": "uncertain", "notes": "car headlights cause AGC suppression — latch blob too small but latch_max=255 ≥ LATCH_TRACE_THRESHOLD; annotated copy (has box overlays)"}
 }

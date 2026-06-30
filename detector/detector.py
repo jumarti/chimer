@@ -259,10 +259,24 @@ class GateClassifier:
                     open_reason = "big_blade"
                     confidence = open_score
                 else:
-                    # Markers absent from both latch zones and open zone → gate is ajar.
-                    state      = "open"
-                    open_reason = "big_blade"
-                    confidence = 0.45  # inferred from absence; counts in window (> MIN_FRAME_QUALITY)
+                    # Markers absent from both latch zones and open zone.
+                    # Guard: if ZONE_LATCH still has a very bright peak pixel
+                    # (retroreflector "trace"), the marker IS present but the
+                    # blob is below LATCH_MIN_BLOB_AREA due to AGC suppression
+                    # from car headlights.  Return uncertain instead of open.
+                    if ir and latch_res.max_pixel >= config.LATCH_TRACE_THRESHOLD:
+                        state      = "uncertain"
+                        confidence = 0.0
+                        logger.info(
+                            "Glare guard: latch_max=%d \u2265 %d but blob too small"
+                            " (AGC suppression) \u2192 uncertain",
+                            latch_res.max_pixel, config.LATCH_TRACE_THRESHOLD,
+                        )
+                    else:
+                        # Gate is ajar: marker absent from latch and open zones.
+                        state      = "open"
+                        open_reason = "big_blade"
+                        confidence = 0.45  # inferred from absence; counts in window (> MIN_FRAME_QUALITY)
             quality = max(latch_res.confidence, open_score) if latch_hit or open_hit else 0.5
         else:
             # --- ZONE_OPEN-PRIMARY mode (default, works without calibration) ---

@@ -46,6 +46,7 @@ class ZoneResult:
     blobs: list[Blob]         # individual blobs found
     bright_px: int            # total bright pixels in searched area
     zone_rect: tuple[int, int, int, int]  # actual rectangle searched
+    max_pixel: int = 0        # brightest raw pixel value in zone (pre-threshold)
 
 
 # ---------------------------------------------------------------------------
@@ -161,6 +162,7 @@ def find_blobs_in_zone(
         blobs=blobs,
         bright_px=total_bright,
         zone_rect=(sx, sy, sw, sh),
+        max_pixel=int(roi.max()),
     )
 
 
