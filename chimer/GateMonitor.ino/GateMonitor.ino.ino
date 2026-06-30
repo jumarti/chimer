@@ -51,7 +51,9 @@ enum GateState {
   GATE_UNKNOWN,
   GATE_OPEN,
   GATE_CLOSED,
-  GATE_ERROR
+  GATE_NO_WIFI,    // WiFi / network not connected
+  GATE_NO_SERVICE, // WiFi OK but gate service unreachable or returned an error
+  GATE_ERROR       // legacy alias — treated the same as GATE_NO_SERVICE
 };
 
 // --------------------------------------------------
@@ -397,17 +399,31 @@ void renderState(bool blink) {
       break;
     }
 
-    case GATE_ERROR:
+    case GATE_NO_WIFI:
     default: {
-      // Orange warning triangle — service unreachable
+      // Red triangle — no WiFi / network
+      drawWarningIcon(cx, screenH / 3, 36, RED);
+
+      M5.Display.setTextColor(RED);
+      M5.Display.setTextSize(1);
+      const char* lineW1 = "Sin WiFi";
+      int lwW1 = strlen(lineW1) * 6;
+      M5.Display.setCursor(cx - lwW1/2, screenH * 2/3);
+      M5.Display.print(lineW1);
+      break;
+    }
+
+    case GATE_NO_SERVICE:
+    case GATE_ERROR: {
+      // Orange triangle — WiFi OK but gate service unreachable
       drawWarningIcon(cx, screenH / 3, 36, 0xFD20 /* orange */);
 
       M5.Display.setTextColor(0xFD20 /* orange */);
       M5.Display.setTextSize(1);
-      const char* line1 = "Sin conexion";
-      int lw1 = strlen(line1) * 6;
-      M5.Display.setCursor(cx - lw1/2, screenH * 2/3);
-      M5.Display.print(line1);
+      const char* lineS1 = "Sin servicio";
+      int lwS1 = strlen(lineS1) * 6;
+      M5.Display.setCursor(cx - lwS1/2, screenH * 2/3);
+      M5.Display.print(lineS1);
       break;
     }
 
@@ -439,7 +455,7 @@ void renderState(bool blink) {
 GateState pollGateState() {
   if (WiFi.status() != WL_CONNECTED) {
     Serial.println("poll: WiFi not connected");
-    return GATE_ERROR;
+    return GATE_NO_WIFI;
   }
 
   HTTPClient http;
@@ -452,13 +468,13 @@ GateState pollGateState() {
     Serial.printf("poll: HTTP error %d (%s)\n", code,
                   http.errorToString(code).c_str());
     http.end();
-    return GATE_ERROR;
+    return GATE_NO_SERVICE;
   }
 
   if (code != 200) {
     Serial.printf("poll: unexpected HTTP status %d\n", code);
     http.end();
-    return GATE_ERROR;
+    return GATE_NO_SERVICE;
   }
 
   String body = http.getString();
@@ -478,7 +494,7 @@ GateState pollGateState() {
   }
 
   Serial.println("poll: could not parse gate state");
-  return GATE_ERROR;
+  return GATE_NO_SERVICE;
 }
 
 // Apply a newly polled state and trigger side-effects.
@@ -488,9 +504,11 @@ void applyState(GateState newState) {
 
   if (stateChanged) {
     Serial.printf("Gate state -> %s\n",
-      newState == GATE_OPEN    ? "OPEN"    :
-      newState == GATE_CLOSED  ? "CLOSED"  :
-      newState == GATE_UNKNOWN ? "UNKNOWN" : "ERROR");
+      newState == GATE_OPEN       ? "OPEN"       :
+      newState == GATE_CLOSED     ? "CLOSED"     :
+      newState == GATE_UNKNOWN    ? "UNKNOWN"    :
+      newState == GATE_NO_WIFI    ? "NO_WIFI"    :
+      newState == GATE_NO_SERVICE ? "NO_SERVICE" : "ERROR");
 
     // Entering OPEN: always clear any leftover mute so a fresh open event
     // is never silenced by a mute from a previous episode.
@@ -537,9 +555,11 @@ void handleHealth() {
 
 void handleStatus() {
   const char* stateStr =
-    currentGateState == GATE_OPEN   ? "open"    :
-    currentGateState == GATE_CLOSED ? "closed"  :
-    currentGateState == GATE_ERROR  ? "error"   : "unknown";
+    currentGateState == GATE_OPEN       ? "open"       :
+    currentGateState == GATE_CLOSED     ? "closed"     :
+    currentGateState == GATE_NO_WIFI    ? "no_wifi"    :
+    currentGateState == GATE_NO_SERVICE ? "no_service" :
+    currentGateState == GATE_ERROR      ? "error"      : "unknown";
 
   String json = "{";
   json += "\"gate\":\"";
@@ -614,37 +634,40 @@ void handleNotFound() {
 // Wi-Fi setup
 // --------------------------------------------------
 void connectWiFi() {
-  M5.Display.fillScreen(BLACK);
-  M5.Display.setCursor(5, 20);
-  M5.Display.setTextSize(1);
-  M5.Display.setTextColor(WHITE);
-  M5.Display.println("Connecting WiFi...");
+  while (true) {
+    M5.Display.fillScreen(BLACK);
+    M5.Display.setCursor(5, 20);
+    M5.Display.setTextSize(1);
+    M5.Display.setTextColor(WHITE);
+    M5.Display.println("Connecting WiFi...");
 
-  WiFi.mode(WIFI_STA);
-  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-  Serial.printf("Connecting to WiFi: %s\n", WIFI_SSID);
+    WiFi.disconnect(true);
+    WiFi.mode(WIFI_STA);
+    WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+    Serial.printf("Connecting to WiFi: %s\n", WIFI_SSID);
 
-  int attempts = 0;
-  while (WiFi.status() != WL_CONNECTED && attempts < 60) {
-    delay(500);
-    Serial.print(".");
-    attempts++;
+    int attempts = 0;
+    while (WiFi.status() != WL_CONNECTED && attempts < 60) {
+      delay(500);
+      Serial.print(".");
+      attempts++;
+    }
+    Serial.println();
+
+    if (WiFi.status() == WL_CONNECTED) {
+      IPAddress ip = WiFi.localIP();
+      Serial.printf("WiFi connected. IP: %s\n", ip.toString().c_str());
+      M5.Display.fillScreen(BLACK);
+      M5.Display.setCursor(5, 10);
+      M5.Display.println("WiFi OK");
+      M5.Display.println(ip.toString());
+      return;
+    }
+
+    Serial.println("WiFi failed — retrying in 10 s");
+    M5.Display.println("WiFi failed, retry...");
+    delay(10000);
   }
-  Serial.println();
-
-  if (WiFi.status() != WL_CONNECTED) {
-    M5.Display.println("WiFi failed");
-    Serial.println("WiFi connection failed");
-    while (true) delay(1000);
-  }
-
-  IPAddress ip = WiFi.localIP();
-  Serial.printf("WiFi connected. IP: %s\n", ip.toString().c_str());
-
-  M5.Display.fillScreen(BLACK);
-  M5.Display.setCursor(5, 10);
-  M5.Display.println("WiFi OK");
-  M5.Display.println(ip.toString());
 }
 
 void setupHttpServer() {
@@ -684,7 +707,9 @@ void setup() {
 
   if (!initAudioIfNeeded(wav.sampleRate)) {
     M5.Display.println("Audio init failed");
-    while (true) delay(1000);
+    Serial.println("Audio init failed — restarting in 5 s");
+    delay(5000);
+    ESP.restart();
   }
 
   connectWiFi();
