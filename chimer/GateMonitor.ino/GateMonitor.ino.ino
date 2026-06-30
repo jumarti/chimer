@@ -31,6 +31,8 @@ static const uint32_t CHIME_REPEAT_MS   = 5000;
 static const uint32_t REJA_REPEAT_MS    = 30000;
 // How fast the OPEN text blinks (ms per toggle).
 static const uint32_t BLINK_MS          = 500;
+// How long the button mutes audio when gate is OPEN (ms).
+static const uint32_t MUTE_DURATION_MS  = 2UL * 60UL * 1000UL;  // 30 min
 
 // --------------------------------------------------
 // AtomS3R + Atomic Audio-3.5 Base pins
@@ -199,6 +201,10 @@ uint32_t lastBlinkMs       = 0;  // millis of last blink toggle
 bool     blinkOn           = true;
 bool     lastBlinkOn       = false;
 
+// Audio mute (button silences OPEN alerts for MUTE_DURATION_MS).
+bool     audioMuted        = false;
+uint32_t muteUntilMs       = 0;
+
 // --------------------------------------------------
 // Audio helpers
 // --------------------------------------------------
@@ -282,6 +288,20 @@ bool startPlayback(const AudioResource* resource) {
 // Display helpers
 // --------------------------------------------------
 
+// Draws a small muted-speaker icon (body + horn + diagonal slash).
+// Top-left corner at (x, y); total footprint ~16×16 px.
+void drawMutedSpeaker(int x, int y) {
+  uint16_t col = TFT_DARKGREY;
+  // Speaker body
+  M5.Display.fillRect(x, y + 4, 5, 8, col);
+  // Horn (quadrilateral drawn as two triangles)
+  M5.Display.fillTriangle(x + 5, y + 4, x + 13, y,      x + 13, y + 16, col);
+  M5.Display.fillTriangle(x + 5, y + 4, x +  5, y + 12, x + 13, y + 16, col);
+  // Mute slash (red diagonal)
+  M5.Display.drawLine(x,     y + 15, x + 14, y,      RED);
+  M5.Display.drawLine(x + 1, y + 15, x + 15, y,      RED);
+}
+
 // Draws a filled equilateral-ish warning triangle with a "!" inside.
 void drawWarningIcon(int cx, int cy, int size, uint16_t color) {
   int h = (size * 3) / 4;
@@ -316,21 +336,46 @@ void renderState(bool blink) {
   switch (currentGateState) {
 
     case GATE_OPEN: {
-      // Red/yellow warning triangle
       drawWarningIcon(cx, screenH / 3, 36, YELLOW);
 
-      // Blinking "Reja Abierta" text
-      if (blink) {
-        M5.Display.setTextColor(RED);
-        M5.Display.setTextSize(2);
-        const char* line1 = "Reja";
-        const char* line2 = "Abierta";
-        int lw1 = strlen(line1) * 6 * 2;
-        int lw2 = strlen(line2) * 6 * 2;
-        M5.Display.setCursor(cx - lw1/2, screenH * 2/3);
-        M5.Display.print(line1);
-        M5.Display.setCursor(cx - lw2/2, screenH * 2/3 + 18);
-        M5.Display.print(line2);
+      if (audioMuted) {
+        // --- Muted: show "Reja Abierta" in orange (no red alarm colour)
+        //     plus speaker-mute icon and countdown. ---
+        if (blink) {
+          M5.Display.setTextColor(TFT_ORANGE);
+          M5.Display.setTextSize(1);
+          const char* line1 = "Reja Abierta";
+          int lw1 = strlen(line1) * 6;
+          M5.Display.setCursor(cx - lw1/2, screenH / 2 + 2);
+          M5.Display.print(line1);
+        }
+        // Speaker mute icon + countdown
+        uint32_t now_ms  = millis();
+        uint32_t rem_ms  = (muteUntilMs > now_ms) ? (muteUntilMs - now_ms) : 0;
+        uint32_t rem_min = (rem_ms + 59999UL) / 60000UL;
+        int iconX = cx - 20;
+        int iconY = screenH * 3 / 4 - 8;
+        drawMutedSpeaker(iconX, iconY);
+        char buf[8];
+        snprintf(buf, sizeof(buf), "%lum", rem_min);
+        M5.Display.setTextColor(TFT_DARKGREY);
+        M5.Display.setTextSize(1);
+        M5.Display.setCursor(iconX + 18, iconY + 4);
+        M5.Display.print(buf);
+      } else {
+        // --- Normal OPEN: blinking red "Reja Abierta" ---
+        if (blink) {
+          M5.Display.setTextColor(RED);
+          M5.Display.setTextSize(2);
+          const char* line1 = "Reja";
+          const char* line2 = "Abierta";
+          int lw1 = strlen(line1) * 6 * 2;
+          int lw2 = strlen(line2) * 6 * 2;
+          M5.Display.setCursor(cx - lw1/2, screenH * 2/3);
+          M5.Display.print(line1);
+          M5.Display.setCursor(cx - lw2/2, screenH * 2/3 + 18);
+          M5.Display.print(line2);
+        }
       }
       break;
     }
@@ -443,11 +488,15 @@ void applyState(GateState newState) {
 
   if (stateChanged) {
     Serial.printf("Gate state -> %s\n",
-      newState == GATE_OPEN   ? "OPEN"   :
-      newState == GATE_CLOSED ? "CLOSED" : "ERROR");
+      newState == GATE_OPEN    ? "OPEN"    :
+      newState == GATE_CLOSED  ? "CLOSED"  :
+      newState == GATE_UNKNOWN ? "UNKNOWN" : "ERROR");
 
-    // Entering OPEN: play reja_abierta immediately and reset both timers.
+    // Entering OPEN: always clear any leftover mute so a fresh open event
+    // is never silenced by a mute from a previous episode.
     if (newState == GATE_OPEN) {
+      audioMuted  = false;
+      muteUntilMs = 0;
       startPlayback(&AUDIO_RESOURCES[0]); // reja_abierta
       uint32_t now = millis();
       lastRejaMs  = now;
@@ -666,16 +715,24 @@ void loop() {
     applyState(polled);
   }
 
-  // ---- Repeat reja_abierta every 30 s while OPEN ----
-  if (currentGateState == GATE_OPEN && !isPlaying) {
+  // ---- Mute expiry ----
+  if (audioMuted && (int32_t)(now - muteUntilMs) >= 0) {
+    audioMuted  = false;
+    muteUntilMs = 0;
+    lastRenderedState = GATE_UNKNOWN;  // force display refresh
+    Serial.println("Audio mute expired — sound restored");
+  }
+
+  // ---- Repeat reja_abierta every 30 s while OPEN and not muted ----
+  if (currentGateState == GATE_OPEN && !isPlaying && !audioMuted) {
     if (now - lastRejaMs >= REJA_REPEAT_MS) {
       lastRejaMs = now;
       startPlayback(&AUDIO_RESOURCES[0]); // reja_abierta
     }
   }
 
-  // ---- Repeat short chime every 5 s while OPEN ----
-  if (currentGateState == GATE_OPEN && !isPlaying) {
+  // ---- Repeat short chime every 5 s while OPEN and not muted ----
+  if (currentGateState == GATE_OPEN && !isPlaying && !audioMuted) {
     if (now - lastChimeMs >= CHIME_REPEAT_MS) {
       lastChimeMs = now;
       startPlayback(&AUDIO_RESOURCES[1]); // short_chime
@@ -693,12 +750,15 @@ void loop() {
     renderState(blinkOn);
   }
 
-  // ---- Physical button: manual play (same as original) ----
+  // ---- Physical button: mute audio for MUTE_DURATION_MS while gate is OPEN ----
   if (M5.BtnA.wasPressed()) {
-    if (!isPlaying) {
-      startPlayback(&AUDIO_RESOURCES[0]);
+    if (currentGateState == GATE_OPEN && !audioMuted) {
+      audioMuted        = true;
+      muteUntilMs       = now + MUTE_DURATION_MS;
+      lastRenderedState = GATE_UNKNOWN;  // force display refresh
+      Serial.printf("Audio muted for %lu min\n", MUTE_DURATION_MS / 60000UL);
     } else {
-      Serial.println("Button ignored: audio busy");
+      Serial.println("Button ignored (gate not open or already muted)");
     }
   }
 
