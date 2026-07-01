@@ -194,11 +194,16 @@ class GateClassifier:
                     and config.ZONE_SMALL_REST is not None
                     and config.ZONE_SMALL_OPEN is not None
                 ):
-                    # REST zone: use the dim IR threshold so we reliably detect
-                    # the marker even in low-IR-illumination closed frames and
-                    # avoid false "marker absent" readings.
+                    # REST zone: use a reduced threshold so a marker dimmed by
+                    # water on the lens or low illumination is not falsely
+                    # declared absent from the rest position.
+                    # IR mode: use the dim fallback (120) for very faint markers.
+                    # DAY mode: use the IR latch threshold (150) — aggressive
+                    # enough to catch water-dimmed markers but above the scatter
+                    # level in ZONE_SMALL_REST (~60 px at 150) for open frames.
                     small_rest_threshold = (
-                        config.BRIGHT_THRESHOLD_IR_LATCH_DIM if ir else threshold
+                        config.BRIGHT_THRESHOLD_IR_LATCH_DIM if ir
+                        else config.BRIGHT_THRESHOLD_IR_LATCH
                     )
                     small_rest_res = find_blobs_in_zone(
                         frame, _shift(config.ZONE_SMALL_REST), margin=0,
@@ -210,15 +215,15 @@ class GateClassifier:
                         frame, _shift(config.ZONE_SMALL_OPEN), margin=config.SEARCH_MARGIN,
                         bright_threshold=threshold,
                     )
-                    # Area-based checks mirror the latch logic: sum in IR mode
-                    # (fragmentation), max single-blob in day mode (scatter).
+                    # REST zone: always sum areas so a marker fragmented into
+                    # several small blobs (bright-daylight overexposure) is not
+                    # falsely declared absent.  OPEN zone: sum in IR mode
+                    # (fragmentation); max single-blob in day mode to reject
+                    # scattered sunlit concrete from triggering a false open.
+                    small_rest_area = sum(b.area for b in small_rest_res.blobs)
                     if ir:
-                        small_rest_area = sum(b.area for b in small_rest_res.blobs)
                         small_open_area = sum(b.area for b in small_open_res.blobs)
                     else:
-                        small_rest_area = max(
-                            (b.area for b in small_rest_res.blobs), default=0
-                        )
                         small_open_area = max(
                             (b.area for b in small_open_res.blobs), default=0
                         )
@@ -262,9 +267,11 @@ class GateClassifier:
                     # Markers absent from both latch zones and open zone.
                     # Guard: if ZONE_LATCH still has a very bright peak pixel
                     # (retroreflector "trace"), the marker IS present but the
-                    # blob is below LATCH_MIN_BLOB_AREA due to AGC suppression
-                    # from car headlights.  Return uncertain instead of open.
-                    if ir and latch_res.max_pixel >= config.LATCH_TRACE_THRESHOLD:
+                    # blob is below LATCH_MIN_BLOB_AREA due to degraded signal
+                    # (AGC suppression from headlights, or water on the lens
+                    # blurring the marker below the blob-area threshold in DAY
+                    # mode).  Return uncertain instead of open.
+                    if latch_res.max_pixel >= config.LATCH_TRACE_THRESHOLD:
                         state      = "uncertain"
                         confidence = 0.0
                         logger.info(

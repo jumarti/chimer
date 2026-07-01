@@ -91,7 +91,8 @@ SEARCH_MARGIN: int = 30  # px — camera-shake tolerance
 #   accepting real marker blobs (~450-1200 px).  Derived from sample analysis.
 # BRIGHT_THRESHOLD_IR_LATCH  retroreflective marker appears dimmer in the small
 #   latch zone; lower threshold picks up the blob that BRIGHT_THRESHOLD_IR misses.
-LATCH_MIN_BLOB_AREA:       int = 200  # px; concrete scatter is 50-110px, markers 450-1200px
+LATCH_MIN_BLOB_AREA:       int = 150  # px; concrete scatter is 50-110px; tight-zone markers can
+                                           # fragment to 150-200px in bright daylight (case1 samples)
 BRIGHT_THRESHOLD_IR_LATCH:     int = 150  # IR latch threshold; nighttime markers can be 140-179 bright
 BRIGHT_THRESHOLD_IR_LATCH_DIM: int = 120  # dim fallback; catches very faint IR markers still at latch position
 LATCH_TRACE_THRESHOLD:         int = 180  # retroreflector "trace": if ZONE_LATCH peak ≥ this but blob area

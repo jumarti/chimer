@@ -19,6 +19,7 @@ __pycache__/
 
 # Local data (bulk captures + debug frames — NOT tests/fixtures/)
 .data/
+debug_everest/
 
 # Host-side Docker bind mount targets — keep the directory skeleton,
 # ignore actual frame files (can be large).
