@@ -1,4 +1,4 @@
-# chimer
+# Chimer
 
 Arduino project that plays audio alerts (WAV files) on an **M5Stack AtomS3R** paired with the **Atomic Audio-3.5 Base** (`M5EchoBase`). Supports both a simple button-triggered player and a Wi-Fi REST server.
 
