@@ -43,7 +43,13 @@ from detector import FrameResult, GateClassifier, TemporalAggregator
 try:
     __version__ = _pkg_version("detector")
 except PackageNotFoundError:
-    __version__ = "unknown"
+    # Package not installed (e.g. plain source copy in Docker) — read directly.
+    try:
+        import tomllib
+        with open(Path(__file__).parent / "pyproject.toml", "rb") as _f:
+            __version__ = tomllib.load(_f)["project"]["version"]
+    except Exception:
+        __version__ = "unknown"
 
 logging.basicConfig(
     level=getattr(logging, config.LOG_LEVEL.upper(), logging.INFO),
