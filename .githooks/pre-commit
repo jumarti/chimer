@@ -1,0 +1,24 @@
+#!/bin/sh
+# Auto-bump the detector patch version on every commit.
+# Activate once per clone with:  git config core.hooksPath .githooks
+
+python3 - <<'EOF'
+import re, pathlib, sys
+
+pyproject = pathlib.Path("detector/pyproject.toml")
+if not pyproject.exists():
+    sys.exit(0)  # not running from repo root — skip silently
+
+content = pyproject.read_text()
+m = re.search(r'^(version\s*=\s*")(\d+)\.(\d+)\.(\d+)(")', content, re.MULTILINE)
+if not m:
+    print("[pre-commit] WARNING: could not parse version in detector/pyproject.toml", flush=True)
+    sys.exit(0)
+
+major, minor, patch = int(m.group(2)), int(m.group(3)), int(m.group(4))
+new_version = f"{major}.{minor}.{patch + 1}"
+pyproject.write_text(content[:m.start()] + f'{m.group(1)}{new_version}{m.group(5)}' + content[m.end():])
+print(f"[pre-commit] detector {major}.{minor}.{patch} → {new_version}", flush=True)
+EOF
+
+git add detector/pyproject.toml

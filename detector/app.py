@@ -29,6 +29,7 @@ import sys
 import threading
 import time
 from datetime import datetime, timezone
+from importlib.metadata import PackageNotFoundError, version as _pkg_version
 from pathlib import Path
 
 import cv2
@@ -38,6 +39,11 @@ from flask import Flask, Response, jsonify
 import config
 from capture import grab_frame
 from detector import FrameResult, GateClassifier, TemporalAggregator
+
+try:
+    __version__ = _pkg_version("detector")
+except PackageNotFoundError:
+    __version__ = "unknown"
 
 logging.basicConfig(
     level=getattr(logging, config.LOG_LEVEL.upper(), logging.INFO),
@@ -305,6 +311,7 @@ def main() -> None:
     parser.add_argument("--debug", action="store_true")
     args = parser.parse_args()
 
+    logger.info("detector v%s", __version__)
     try:
         from urllib.parse import urlparse
         _u = urlparse(config.RTSP_URL)

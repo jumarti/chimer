@@ -1,6 +1,6 @@
 [project]
 name = "detector"
-version = "0.1.0"
+version = "0.1.2"
 description = "Gate open/closed detector: RTSP camera poller + OpenCV CV analysis + Flask REST API"
 requires-python = ">=3.11"
 dependencies = [
