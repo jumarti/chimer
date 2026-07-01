@@ -35,8 +35,9 @@ RUN useradd --no-log-init -r -u 1000 -s /sbin/nologin detector
 WORKDIR /app
 
 # Install Python dependencies before copying the full source so Docker can
-# cache this layer independently of code changes.
-COPY pyproject.toml ./
+# cache this layer independently of code changes.  pyproject.toml is NOT
+# copied here — the deps are listed explicitly in the RUN command so that
+# a patch-version bump in pyproject.toml does not invalidate this layer.
 RUN pip install --no-cache-dir \
         "flask>=3.0" \
         "numpy>=1.24" \
